@@ -148,6 +148,14 @@ def test_a_book_with_no_isbn_is_left_unmatched_and_no_service_is_asked_about_it(
     Neither service is asked *about* the book either, because title-and-author matching is
     the ambiguous kind and the design holds those for the owner. Appearing in the queue is
     the point; being quietly added somewhere is the failure this avoids.
+
+    **The zero-request assertions alone do not pin the guard**, which is worth knowing
+    because it looks like they do. `resolve_books` passes `match_readwise` nothing but the
+    ISBN — deliberately, since a title-and-author lookup is exactly what ruling 1 refuses —
+    so with the guard removed the row *still* makes no request: `match_readwise` refuses it
+    as "no ISBN, no title and no author" and the refusal is caught and reported. Held and
+    failed are the two states that differ, so the assertions that pin the guard are the two
+    at the end: a held row carries no error, and the run's `errors` is empty.
     """
     storage = Storage(":memory:")
     _no_isbn_row(storage)
@@ -165,6 +173,10 @@ def test_a_book_with_no_isbn_is_left_unmatched_and_no_service_is_asked_about_it(
     assert rw.requests == [] and rw.creations == []
     assert hc.queries == []
     assert [r["book_path"] for r in storage.books_needing_confirmation()] == [GOD_PATH]
+    # Held, not refused: the guard is what makes the difference, and it is the only
+    # difference, because the failure path refuses the same row for the same reason.
+    assert row["error"] is None
+    assert report.errors == {}
 
 
 def test_confirming_a_row_once_writes_both_ids_and_moves_it_to_confirmed():
