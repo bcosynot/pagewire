@@ -16,19 +16,42 @@ The two complaints that started this:
 
 ## Status
 
-Design phase. Nothing is built yet. The design of record is
+Building. Five of the epic's ten children are merged on `main` — the relay's ingest,
+derivation and identification layers — and the device-side path is verified on real
+hardware. **Nothing is delivered to either service yet**, so the two complaints above
+still stand.
+
+Merged so far:
+
+- **The relay skeleton** (`PER-40`) — token-authenticated ingest, idempotent on the
+  device's own event id, with the SQLite schema and the design's tunables in config.
+- **Session derivation and stitching** (`PER-41`) — consecutive sittings joined across
+  the 30-minute window, with pauses and the book-switch rule applied.
+- **The metadata sweep** (`PER-42`) — the card read through the reader's own File
+  Transfer web server, giving every book its title, author and ISBN keyed on the
+  content hash. Run against the real card: 100 books, 100 rows.
+- **The device spike** (`PER-39`) — the event path, the drain behaviour and the
+  document hash all confirmed against hardware.
+
+Next: **book identity and the review page** (`PER-43`), which both delivery children
+wait on, then delivery to Readwise (`PER-44`) and Hardcover (`PER-45`), then deploy
+(`PER-46`) and the end-to-end check on the device (`PER-47`).
+
+The design of record is
 [`docs/superpowers/specs/2026-10-31-pagewire-design.md`](docs/superpowers/specs/2026-10-31-pagewire-design.md),
 and work is tracked as a Linear epic (PER-38) with one child per workstream.
 
-The device side cannot run on the installed firmware (v1.5.0): the SD-card plugin
-system landed after that release and currently ships only in v2.0.0rc.
+The device runs Crosspoint **2.0.0**, which carries the SD-card plugin system this
+project needs. (v1.5.0, the build the design was originally written against, has no
+plugin system at all.)
 
 ## Layout
 
 ```
 docs/superpowers/specs/   the design of record
-spike/                    throwaway kit to prove the device path before building
-src/pagewire/             the relay (empty skeleton for now)
+docs/evidence/            raw captures behind each completed ticket
+spike/                    throwaway kit that proved the device path — finished, nothing imports it
+src/pagewire/             the relay
 tests/                    tests for the relay
 ```
 
@@ -52,7 +75,31 @@ make help     # the rest
 Equivalent by hand: `python -m venv .venv && . .venv/bin/activate`, then
 `pip install -e '.[dev]'`, then `pytest`.
 
+## Running the metadata sweep
+
+Reading-session events carry an SD path and a content hash, but no title, author or
+ISBN. The sweep reads those out of the books themselves, over the reader's own web
+server, and keys each one on the hash the device reports:
+
+```sh
+python -m pagewire.sweep --address 192.168.0.217    # the address on the device's screen
+```
+
+The device's web server runs **only** while the reader is in File Transfer or Calibre
+Wireless mode, so a sweep cannot run during a normal reading session — that is also
+why it is a deliberate command rather than part of ingest.
+
+A first sweep downloads every EPUB with no row yet: 100 books and ~409 MB on the
+current card, about 14 minutes at the device's ~490 KB/s. A later sweep skips anything
+already identified and finishes in seconds, because the identity is keyed on the SD
+path. Tunables: `PAGEWIRE_DEVICE_ADDRESS`, `PAGEWIRE_SWEEP_TIMEOUT_SECONDS`,
+`PAGEWIRE_DB`.
+
 ## Running the spike listener
+
+The spike is finished — `PER-39` closed it, and its findings are in
+[`spike/README.md`](spike/README.md) and [`spike/evidence/`](spike/evidence/). These
+targets still work, and are here for completeness:
 
 ```sh
 make spike                      # capture listener, prints the LAN address to use
