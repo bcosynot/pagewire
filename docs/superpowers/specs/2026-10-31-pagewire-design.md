@@ -202,6 +202,52 @@ Source: `autocaliweb/upstream/cps/kosync.py`, `cps/services/hardcover.py`.
   code. So there is nothing to disable or coordinate with, provided the Kobo path
   (`config_hardcover_sync`) and annotation sync (`config_hardcover_annosync`) stay off.
 
+### Prior art and neighbouring work (verified 2026-10-31)
+
+Two upstream projects were found while writing this, and both were read before the plan
+was committed to. Pagewire stays separate from either — that is Vivek's call, made
+explicitly — but what overlaps is recorded here so nobody rebuilds it by accident.
+
+**`crosspoint-reader/crosspoint-sync`** — a KOSync-compatible server plus a
+service-connector hub, Node + SQLite, one Docker image, from the same org as the
+firmware. Relevant parts:
+
+- A KOSync server the device points at by changing its sync URL, and an extended
+  `/api/v1` it says is "designed for the ESP32", carrying the full CrossPoint position
+  (spine, paragraph, anchor, page hints) rather than a lossy percentage.
+- `PUT /api/v1/stats/sessions` accepts measured reading-session checkpoints —
+  `session_id`, `document`, `started_at`, `ended_at`, `seconds`, `utc_offset_minutes` —
+  with stable ids so later checkpoints update the same session, active seconds ≥10, and
+  a span cap of seven days. That is close to this design's derived sitting, without the
+  pause semantics or the book-switch rule.
+- A **connector hub** already containing a `hardcover` connector, tier 1,
+  `carries: ["progress", "finished"]`, write-capable, credentials encrypted at rest,
+  with a background worker doing retry/backoff. Its `readwise` connector is
+  `carries: ["highlight"]` — highlights, not progress and not sessions.
+- **Server-side matching**, from the document's title and author as sent by the firmware
+  (so its "Send Metadata" device setting must be on), with confidence, `auto|manual|none`
+  provenance, sticky manual overrides, rematch, lookup, a library refresh, and a review
+  endpoint that even reports a per-book `push_note` explaining why a push cannot proceed.
+  That is this design's identity resolution and review page, already built.
+- Per-document status (`reading|paused|finished|dnf`), dates, info and cover endpoints;
+  clippings and bookmark delta sync; reading stats with streaks; auto-pause after 30 days.
+
+**What this changes here:** nothing structurally, because Pagewire is deliberately
+separate. Three things were still worth taking. Its document-identity note confirms the
+device has **two** hash methods and that a book synced under both appears twice (see the
+identity section). Its matcher shows a workable alternative to the metadata sweep —
+title and author sent by the device — which is only available to a KOSync server, which
+this design is not, so the sweep stays. And its connector contract is worth reading
+before writing the Readwise client, because the Readwise Books session API this design
+targets is the one gap no upstream connector fills.
+
+**`bartholomej/almanac.crosspoint-plugin`** — a published SD-card plugin whose
+`device.json` binds `reader.session` to a POST with `"connect": true` and the same
+`{event.*}` substitutions this design's manifest uses. Useful as a known-good manifest
+shape: the token is declared `{"file": "token.json", "path": "token"}` and a flat config
+file is declared `{"config": {"file": "config.json"}}`, with `{cfg.KEY}` reading its
+keys. The spike manifest follows that shape rather than guessing from the prose docs.
+
 ## The design
 
 Three pieces.
@@ -413,6 +459,16 @@ Consequences to get right:
   highest-risk assumption in the design**, because the whole identity table hangs on it.
 - The relay needs the device's address: `crosspoint.local` (mDNS, may not resolve inside
   the LXC) or the IP shown on the device screen. A tunable.
+- **There are two document-id methods, not one.** Confirmed by reading the firmware
+  (`lib/KOReaderSync/KOReaderDocumentId.cpp`) and independently by crosspoint-sync's
+  protocol doc: the device computes either a partial MD5 over content-sampled bytes, or
+  a plain MD5 of the file's basename, "per device setting". They are different keys for
+  the same book, and crosspoint-sync's own note is that "the server never tries to unify
+  the two hash methods; a book synced under both appears as two documents". So the relay
+  must support both, record which one a row was keyed under, and treat a rename on the
+  card as either harmless (content method) or an identity change (filename method). The
+  spike's kit computes both and reports which one the device is using; the identity
+  table grows a column for it.
 
 ## Tunables (exposed, not baked in)
 
