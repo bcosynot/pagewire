@@ -1,0 +1,45 @@
+{
+  "book_patches": [
+    {
+      "finished_reading_at": "2025-10-10T11:13:20Z",
+      "id": 4790033,
+      "status": "finished"
+    }
+  ],
+  "sessions": [
+    [
+      {
+        "book_id": 4790033,
+        "device": {
+          "model": "X4",
+          "type": "E-Reader",
+          "vendor": "Xteink"
+        },
+        "ended_at": "2025-10-09T10:13:20Z",
+        "format": "ebook",
+        "paused_seconds": 1200,
+        "percent_at_end": 0.447,
+        "percent_at_start": 0.412,
+        "publish_to_feed": false,
+        "started_at": "2025-10-09T08:53:20Z",
+        "timezone": "America/New_York"
+      },
+      {
+        "book_id": 4790033,
+        "device": {
+          "model": "X4",
+          "type": "E-Reader",
+          "vendor": "Xteink"
+        },
+        "ended_at": "2025-10-10T11:13:20Z",
+        "format": "ebook",
+        "paused_seconds": 1200,
+        "percent_at_end": 1.0,
+        "percent_at_start": 0.447,
+        "publish_to_feed": false,
+        "started_at": "2025-10-10T09:53:20Z",
+        "timezone": "America/New_York"
+      }
+    ]
+  ]
+}

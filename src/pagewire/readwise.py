@@ -33,6 +33,11 @@ from typing import Any
 
 READWISE_BASE_URL = "https://readwise.io"
 BOOKS_PATH = "/books/api/v1/books"
+SESSIONS_PATH = "/books/api/v1/sessions"
+
+# `POST /sessions` records 1 to 10 finished sessions per request and refuses more. The
+# limit is the API's, so it lives here beside the paths rather than in configuration.
+MAX_SESSIONS_PER_REQUEST = 10
 
 # The shelf a newly matched book goes on. It is what the owner is actually doing with it:
 # the relay only ever identifies books it has seen reading events for.
@@ -53,6 +58,24 @@ class ReadwiseError(RuntimeError):
         super().__init__(message)
         self.status_code = status_code
         self.code = code
+
+
+@dataclass(frozen=True)
+class SessionRecord:
+    """One result of `POST /sessions`: the session id, or why that item was refused.
+
+    Per item, because the endpoint answers per item. A batch can partly succeed, and
+    treating a whole batch as failed because one book was wrong would mean re-sending the
+    nine that landed — which records them twice.
+    """
+
+    session_id: str | None
+    error: str | None = None
+    error_code: str | None = None
+
+    @property
+    def created(self) -> bool:
+        return self.session_id is not None and self.error is None
 
 
 @dataclass(frozen=True)
@@ -140,6 +163,116 @@ class ReadwiseClient:
             status=status,
         )
 
+    # -- sessions ----------------------------------------------------------
+
+    def record_sessions(self, sessions: list[dict[str, Any]]) -> list[SessionRecord]:
+        """Record finished reading sessions and return one result per session.
+
+        `POST /sessions` is **not** idempotent — the docs say a repeated request records a
+        second session — so this is only ever called for targets the caller has already
+        claimed in its own send log. That is the send log's whole purpose, and it is why
+        this method deliberately does no de-duplication of its own: it cannot know what a
+        previous process managed to send.
+
+        A whole-request failure raises `ReadwiseError` carrying the status code, which is
+        what tells the caller whether anything may have been written (5xx: unknown) or not
+        (4xx: nothing recorded). An item the service refuses comes back as a `SessionRecord`
+        with `error` set, because the rest of the batch is still recorded.
+        """
+        items = [dict(session) for session in sessions]
+        if not 1 <= len(items) <= MAX_SESSIONS_PER_REQUEST:
+            raise ReadwiseError(
+                f"Readwise records 1 to {MAX_SESSIONS_PER_REQUEST} sessions per request,"
+                f" got {len(items)}"
+            )
+
+        body = self._request("POST", SESSIONS_PATH, payload={"items": items})
+        results = body.get("results")
+        if not isinstance(results, list) or len(results) != len(items):
+            # An answer we cannot line up with what was sent is not a success. Raising
+            # leaves the targets claimed-and-unconfirmed, which is the safe state: the next
+            # attempt asks rather than re-sends.
+            raise ReadwiseError(
+                "Readwise answered a sessions request with results that do not match the"
+                " number of sessions sent"
+            )
+
+        records: list[SessionRecord] = []
+        for result in results:
+            error = result.get("error")
+            if error:
+                code = error.get("code") if isinstance(error, dict) else None
+                message = (
+                    error.get("message") if isinstance(error, dict) else str(error)
+                ) or "Readwise refused this session"
+                records.append(SessionRecord(session_id=None, error=message, error_code=code))
+                continue
+            session_id = result.get("session_id")
+            if session_id is None:
+                records.append(
+                    SessionRecord(
+                        session_id=None,
+                        error="Readwise answered a created session with no session_id",
+                    )
+                )
+                continue
+            records.append(SessionRecord(session_id=str(session_id)))
+        return records
+
+    def sessions_for_book(
+        self, book_id: str, *, started_after: str | None = None
+    ) -> list[dict[str, Any]]:
+        """The sessions already recorded against one book.
+
+        The reconciliation read: because `POST /sessions` cannot be made idempotent, the
+        only way to know whether a claimed session landed is to ask. `started_after` keeps
+        the answer small by asking from just before the sitting in question.
+        """
+        query: dict[str, Any] = {"book_ids": str(book_id)}
+        if started_after is not None:
+            query["started_after"] = started_after
+        body = self._request("GET", SESSIONS_PATH, query=query)
+        results = body.get("results")
+        return results if isinstance(results, list) else []
+
+    def finish_book(self, book_id: str, *, finished_at: str) -> None:
+        """Put a book on the `finished` shelf, with the date the reading ended.
+
+        `PATCH /books` takes the book id the library issued. It answers per item, so a
+        refusal has to be read out of the result rather than inferred from the HTTP status.
+        """
+        try:
+            numeric_id = int(book_id)
+        except (TypeError, ValueError) as exc:
+            raise ReadwiseError(
+                f"cannot finish a book whose readwise id is not a number: {book_id!r}"
+            ) from exc
+
+        body = self._request(
+            "PATCH",
+            BOOKS_PATH,
+            payload={
+                "items": [
+                    {
+                        "id": numeric_id,
+                        "status": "finished",
+                        "finished_reading_at": finished_at,
+                    }
+                ]
+            },
+        )
+        results = body.get("results") or []
+        if not results:
+            raise ReadwiseError("Readwise answered a book update with no result")
+        result = results[0]
+        error = result.get("error")
+        if error or result.get("status") == "error":
+            code = error.get("code") if isinstance(error, dict) else None
+            message = (
+                error.get("message") if isinstance(error, dict) else str(error)
+            ) or "Readwise refused the book update"
+            raise ReadwiseError(f"Readwise refused the book update: {message}", code=code)
+
     # -- internals ---------------------------------------------------------
 
     def _request(
@@ -147,7 +280,7 @@ class ReadwiseClient:
         method: str,
         path: str,
         *,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.token:
@@ -157,7 +290,9 @@ class ReadwiseClient:
 
         url = f"{self.base_url}{path}"
         if query:
-            url += "?" + urllib.parse.urlencode(query)
+            # `doseq` so a filter that takes several values (the API's `ids` and `isbns`
+            # are arrays) is spelled the way the docs spell it.
+            url += "?" + urllib.parse.urlencode(query, doseq=True)
 
         request = urllib.request.Request(
             url,

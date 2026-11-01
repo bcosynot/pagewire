@@ -307,3 +307,37 @@ def test_the_ends_and_the_pause_always_pair():
 
     for sitting in sittings:
         assert_ends_and_pause_pair(sitting)
+
+
+def test_a_sitting_carries_the_devices_finished_flag():
+    """Delivery's criterion 5 needs this fact, and it is the device's to state.
+
+    `end_percent == 100` (or a position at the whole scale) is the firmware saying the book
+    was finished. The derivation carries it onto the sitting so the delivery step does not
+    have to re-read raw events — and so 100 % and 99 % are distinguishable at all.
+    """
+    at_end = derive(
+        [session(A, 1000, 1300, duration=300, progress=(0, 10_000), scale=10_000)],
+        stitch_window_seconds=WINDOW,
+        now=NOW,
+    )
+    nearly = derive(
+        [session(A, 1000, 1300, duration=300, progress=(0, 9_900), scale=10_000)],
+        stitch_window_seconds=WINDOW,
+        now=NOW,
+    )
+
+    assert [sitting.finished for sitting in at_end] == [True]
+    assert [sitting.finished for sitting in nearly] == [False]
+
+
+def test_finishing_a_book_survives_stitching():
+    """A sitting that stitched several firmware sessions is finished if any of them was."""
+    events = [
+        session(A, 1000, 1300, duration=300),
+        session(A, 1500, 1800, duration=300, progress=(0, 10_000), scale=10_000),
+    ]
+    sittings = derive(events, stitch_window_seconds=WINDOW, now=NOW)
+
+    assert len(sittings) == 1
+    assert sittings[0].finished is True

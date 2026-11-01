@@ -1,0 +1,12 @@
+attempts and the status each was answered with:
+  attempt 1: 500
+  attempt 2: 503
+  attempt 3: 200
+
+sessions recorded: 2
+delivered: 2
+
+send log after the retries:
+670108835427962c46d53ea3cc1fd5cf @ 1760000000 readwise: delivered external_id=90211877
+670108835427962c46d53ea3cc1fd5cf @ 1760090000 readwise: delivered external_id=90211878
+670108835427962c46d53ea3cc1fd5cf @ 1760090000 readwise:finished: delivered external_id=finished

@@ -16,10 +16,13 @@ The two complaints that started this:
 
 ## Status
 
-Building. Six of the epic's ten children are merged on `main` — the relay's ingest,
-derivation, identification and identity layers — and the device-side path is verified on
-real hardware. **Nothing is delivered to either service yet**, so the two complaints above
-still stand.
+Building. Seven of the epic's ten children are built — the relay's ingest, derivation,
+identification, identity and Readwise-delivery layers — and the device-side path is
+verified on real hardware. **No live delivery has been made to either service yet**: the
+delivery code exists and is tested against servers speaking the documented shapes, but no
+Readwise token has been used against a real account. The steps that close that gap are in
+[`docs/evidence/per-44-delivery/runbook.md`](docs/evidence/per-44-delivery/runbook.md), so
+the two complaints above still stand until they are run.
 
 Merged so far:
 
@@ -33,11 +36,15 @@ Merged so far:
 - **Book identity and the review page** (`PER-43`) — an ISBN match is added to Readwise
   and Hardcover with no gate; anything ambiguous waits in the page for one confirmation.
   Of the card's 100 books, 15 carry an ISBN and resolve themselves; 85 need a decision.
+- **Readwise session delivery** (`PER-44`) — finalised sittings of identified books are
+  posted as `ebook` sessions with the device's own positions and pause, recorded once
+  thanks to the send log, retried with backoff, and a book that reaches 100 % is moved to
+  `finished` with the date. Not yet run against a live account.
 - **The device spike** (`PER-39`) — the event path, the drain behaviour and the
   document hash all confirmed against hardware.
 
-Next: delivery to Readwise (`PER-44`) and Hardcover (`PER-45`), then deploy (`PER-46`)
-and the end-to-end check on the device (`PER-47`).
+Next: delivery to Hardcover (`PER-45`), then deploy (`PER-46`) and the end-to-end check on
+the device (`PER-47`).
 
 The design of record is
 [`docs/superpowers/specs/2026-10-31-pagewire-design.md`](docs/superpowers/specs/2026-10-31-pagewire-design.md),

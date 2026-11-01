@@ -93,6 +93,14 @@ class Settings:
     # How often the finalisation sweep looks for sittings that have gone quiet.
     sweep_interval_seconds: int = 60
 
+    # Delivery: how many sittings go in one request (Readwise takes at most 10), and how
+    # hard to try when a destination refuses. The backoff doubles from its start value to
+    # its maximum, so five attempts at 2s start with a 30-second worst case per batch.
+    delivery_batch_size: int = 10
+    delivery_retry_attempts: int = 5
+    delivery_retry_backoff_seconds: float = 2.0
+    delivery_retry_backoff_max_seconds: float = 60.0
+
     # Minimum spacing between progress writes to Hardcover, per book. The KOReader plugin
     # uses one minute; Hardcover's free plan allows 60 requests a minute.
     hardcover_throttle_seconds: int = 60
@@ -127,6 +135,18 @@ class Settings:
             device_model=_str(env, "DEVICE_MODEL", cls.device_model),
             timezone=_str(env, "TIMEZONE", cls.timezone),
             sweep_interval_seconds=_int(env, "SWEEP_INTERVAL_SECONDS", cls.sweep_interval_seconds),
+            delivery_batch_size=_int(env, "DELIVERY_BATCH_SIZE", cls.delivery_batch_size),
+            delivery_retry_attempts=_int(
+                env, "DELIVERY_RETRY_ATTEMPTS", cls.delivery_retry_attempts
+            ),
+            delivery_retry_backoff_seconds=_float(
+                env, "DELIVERY_RETRY_BACKOFF_SECONDS", cls.delivery_retry_backoff_seconds
+            ),
+            delivery_retry_backoff_max_seconds=_float(
+                env,
+                "DELIVERY_RETRY_BACKOFF_MAX_SECONDS",
+                cls.delivery_retry_backoff_max_seconds,
+            ),
             hardcover_throttle_seconds=_int(
                 env, "HARDCOVER_THROTTLE_SECONDS", cls.hardcover_throttle_seconds
             ),

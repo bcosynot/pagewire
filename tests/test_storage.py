@@ -161,3 +161,105 @@ def test_an_existing_database_gains_the_identity_columns_without_losing_books(tm
     assert row["title"] == "A Book"
     storage.set_book_error("doc-swept", "403 insufficient_scope from Hardcover")
     assert "insufficient_scope" in storage.book("doc-swept")["error"]
+
+
+# ---------------------------------------------------------------- the send log
+
+
+def test_a_claim_is_exclusive_so_a_second_attempt_cannot_claim_the_same_target():
+    """The ledger's one job: one row per (book, sitting, destination), whoever asks."""
+    storage = Storage(":memory:")
+
+    assert storage.claim_delivery("doc-1", 100, "readwise") is True
+    assert storage.claim_delivery("doc-1", 100, "readwise") is False
+    assert len(storage.send_log()) == 1
+
+
+def test_a_failed_delivery_never_reads_as_delivered():
+    """The state a retry depends on: pending, with the reason and the status it came with."""
+    storage = Storage(":memory:")
+    storage.claim_delivery("doc-1", 100, "readwise")
+
+    storage.mark_delivery_failed(
+        "doc-1", 100, "readwise", "HTTP 503 internal_error", status_code=503
+    )
+
+    row = storage.delivery_row("doc-1", 100, "readwise")
+    assert row is not None
+    assert row["sent_at"] is None
+    assert row["external_id"] is None
+    assert row["error_status"] == 503
+    assert "503" in row["error"]
+
+
+def test_marking_a_target_delivered_records_the_id_and_clears_the_failure():
+    """A later success has to erase the earlier refusal, or the row reads as broken forever."""
+    storage = Storage(":memory:")
+    storage.claim_delivery("doc-1", 100, "readwise")
+    storage.mark_delivery_failed("doc-1", 100, "readwise", "HTTP 500", status_code=500)
+
+    storage.mark_delivered("doc-1", 100, "readwise", "90211876")
+
+    row = storage.delivery_row("doc-1", 100, "readwise")
+    assert row is not None
+    assert row["external_id"] == "90211876"
+    assert row["sent_at"] is not None
+    assert row["error"] is None
+    assert row["error_status"] is None
+
+
+def test_an_existing_database_gains_the_delivery_columns_without_a_reset(tmp_path):
+    """A deployed relay's `derived_sessions` and `send_log` predate this ticket's columns.
+
+    `CREATE TABLE IF NOT EXISTS` would leave both tables exactly as they are, so the two
+    new columns are added by the migration. The rows already in them have to survive: the
+    send log is the only record of what Readwise has.
+    """
+    path = tmp_path / "pagewire.db"
+    legacy = sqlite3.connect(path)
+    legacy.executescript(
+        """
+        CREATE TABLE derived_sessions (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            document         TEXT NOT NULL,
+            started_at       INTEGER NOT NULL,
+            ended_at         INTEGER NOT NULL,
+            active_seconds   INTEGER NOT NULL,
+            paused_seconds   INTEGER NOT NULL,
+            start_progress_bp INTEGER,
+            end_progress_bp  INTEGER,
+            finalised        INTEGER NOT NULL DEFAULT 0,
+            event_ids        TEXT NOT NULL,
+            updated_at       INTEGER NOT NULL,
+            UNIQUE (document, started_at)
+        );
+        INSERT INTO derived_sessions (document, started_at, ended_at, active_seconds,
+                                      paused_seconds, finalised, event_ids, updated_at)
+        VALUES ('doc-1', 100, 200, 60, 40, 1, '[]', 300);
+
+        CREATE TABLE send_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            document        TEXT NOT NULL,
+            started_at      INTEGER NOT NULL,
+            destination     TEXT NOT NULL,
+            external_id     TEXT,
+            sent_at         INTEGER,
+            error           TEXT,
+            UNIQUE (document, started_at, destination)
+        );
+        INSERT INTO send_log (document, started_at, destination, external_id, sent_at)
+        VALUES ('doc-already-sent', 50, 'readwise', '90211000', 60);
+        """
+    )
+    legacy.commit()
+    legacy.close()
+
+    storage = Storage(str(path))
+
+    assert storage.send_log()[0]["external_id"] == "90211000"
+    sessions = {row["started_at"]: row for row in storage.sittings()}
+    assert sessions[100]["finished"] == 0
+    storage.claim_delivery("doc-1", 100, "readwise")
+    storage.mark_delivery_failed("doc-1", 100, "readwise", "HTTP 502", status_code=502)
+    failed = storage.delivery_row("doc-1", 100, "readwise")
+    assert failed is not None and failed["error_status"] == 502

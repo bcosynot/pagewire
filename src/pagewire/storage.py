@@ -79,13 +79,24 @@ CREATE TABLE IF NOT EXISTS derived_sessions (
     start_progress_bp INTEGER,
     end_progress_bp  INTEGER,
     finalised        INTEGER NOT NULL DEFAULT 0,
+    finished         INTEGER NOT NULL DEFAULT 0,
     event_ids        TEXT NOT NULL,
     updated_at       INTEGER NOT NULL,
     UNIQUE (document, started_at)
 );
 
 -- One row per delivery attempt target, so a crash between sending and recording cannot
--- produce a second session at the service.
+-- produce a second session at the service. This is a ledger of intent and outcome, not of
+-- success: the row is written *before* the call, because the failure it exists to prevent
+-- is the one Readwise documents — a repeated POST records a second session, and there is
+-- no idempotency key to lean on.
+--
+-- `sent_at` NULL means the target is not known to be delivered. Read that together with
+-- `error` and `error_status`:
+--   * error NULL                 — claimed, outcome unknown (the process died mid-call);
+--   * error set, error_status<500 — the service refused it; nothing was recorded;
+--   * error set, error_status>=500 or NULL — ambiguous, so the next attempt has to ask
+--     Readwise whether it landed before sending again.
 CREATE TABLE IF NOT EXISTS send_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     document        TEXT NOT NULL,
@@ -94,6 +105,7 @@ CREATE TABLE IF NOT EXISTS send_log (
     external_id     TEXT,
     sent_at         INTEGER,
     error           TEXT,
+    error_status    INTEGER,
     UNIQUE (document, started_at, destination)
 );
 """
@@ -222,6 +234,7 @@ class Storage:
                 sitting.start_progress_bp,
                 sitting.end_progress_bp,
                 int(sitting.finalised),
+                int(sitting.finished),
                 json.dumps(list(sitting.event_ids)),
                 updated_at,
             )
@@ -233,8 +246,9 @@ class Storage:
                 """
                 INSERT INTO derived_sessions
                     (document, started_at, ended_at, active_seconds, paused_seconds,
-                     start_progress_bp, end_progress_bp, finalised, event_ids, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     start_progress_bp, end_progress_bp, finalised, finished, event_ids,
+                     updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -417,6 +431,129 @@ class Storage:
                 (message, int(time.time()), document),
             )
 
+    # -- delivery (the send log) -------------------------------------------
+
+    def sittings_to_deliver(self) -> list[sqlite3.Row]:
+        """Finalised sittings of identified books, in delivery order.
+
+        Two gates, and both are here rather than in the caller so no destination can forget
+        one: the sitting has to be finalised (Readwise cannot amend a session, so an open
+        sitting must not be sent) and its book has to be identified (`status` in
+        `MATCHED_STATUSES`). An unidentified book's sittings are therefore absent from this
+        result entirely — they are never claimed in the send log and never counted by a
+        caller that forgets to filter.
+        """
+        placeholders = ", ".join("?" for _ in MATCHED_STATUSES)
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    f"""
+                    SELECT d.document, d.started_at, d.ended_at, d.active_seconds,
+                           d.paused_seconds, d.start_progress_bp, d.end_progress_bp,
+                           d.finalised, d.finished,
+                           b.readwise_id, b.book_path, b.title,
+                           b.status AS book_status
+                    FROM derived_sessions AS d
+                    JOIN books AS b ON b.document = d.document
+                    WHERE d.finalised = 1 AND b.status IN ({placeholders})
+                    ORDER BY d.document, d.started_at
+                    """,
+                    MATCHED_STATUSES,
+                )
+            )
+
+    def claim_delivery(self, document: str, started_at: int, destination: str) -> bool:
+        """Mark one target as being delivered *before* the call is made.
+
+        Returns True when this call created the claim, False when a row was already there —
+        which is what makes a second delivery attempt a no-op rather than a second session
+        at the service. Written before the request on purpose: a claim written after it
+        would leave the crash window the design's idempotence rule exists to close.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO send_log (document, started_at, destination)
+                VALUES (?, ?, ?)
+                """,
+                (document, int(started_at), destination),
+            )
+            return cursor.rowcount == 1
+
+    def delivery_row(
+        self, document: str, started_at: int, destination: str
+    ) -> sqlite3.Row | None:
+        """The ledger row for one target, whether it succeeded, failed or is unresolved."""
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM send_log WHERE document = ? AND started_at = ?"
+                " AND destination = ?",
+                (document, int(started_at), destination),
+            ).fetchone()
+
+    def mark_delivered(
+        self,
+        document: str,
+        started_at: int,
+        destination: str,
+        external_id: str | None = None,
+    ) -> None:
+        """Record that the service has the thing, and what it called it.
+
+        `external_id` is the only evidence a session exists: the Books API exposes no
+        per-book web URL and no per-session URL either.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE send_log SET external_id = ?, sent_at = ?, error = NULL,
+                                    error_status = NULL
+                WHERE document = ? AND started_at = ? AND destination = ?
+                """,
+                (
+                    None if external_id is None else str(external_id),
+                    int(time.time()),
+                    document,
+                    int(started_at),
+                    destination,
+                ),
+            )
+
+    def mark_delivery_failed(
+        self,
+        document: str,
+        started_at: int,
+        destination: str,
+        error: str,
+        *,
+        status_code: int | None = None,
+    ) -> None:
+        """Record why a delivery did not happen. Never marks it delivered.
+
+        `status_code` is what distinguishes a refusal that recorded nothing (a 4xx) from an
+        outcome nobody can vouch for (a 5xx, or no answer at all). The next attempt reads
+        it to decide whether it may send again or has to ask Readwise first.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE send_log SET error = ?, error_status = ?
+                WHERE document = ? AND started_at = ? AND destination = ?
+                """,
+                (error, status_code, document, int(started_at), destination),
+            )
+
+    def send_log(self, destination: str | None = None) -> list[sqlite3.Row]:
+        """Every delivery attempt target, oldest first, optionally for one destination."""
+        query = "SELECT * FROM send_log"
+        parameters: tuple[Any, ...] = ()
+        if destination is not None:
+            query += " WHERE destination = ?"
+            parameters = (destination,)
+        query += " ORDER BY document, started_at"
+        with self._connect() as connection:
+            return list(connection.execute(query, parameters))
+
 
 def _migrate(connection: sqlite3.Connection) -> None:
     """Bring an older database up to the current schema, in place.
@@ -429,6 +566,18 @@ def _migrate(connection: sqlite3.Connection) -> None:
     columns = {row[1] for row in connection.execute("PRAGMA table_info(books)")}
     if "error" not in columns:
         connection.execute("ALTER TABLE books ADD COLUMN error TEXT")
+
+    session_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(derived_sessions)")
+    }
+    if "finished" not in session_columns:
+        connection.execute(
+            "ALTER TABLE derived_sessions ADD COLUMN finished INTEGER NOT NULL DEFAULT 0"
+        )
+
+    log_columns = {row[1] for row in connection.execute("PRAGMA table_info(send_log)")}
+    if "error_status" not in log_columns:
+        connection.execute("ALTER TABLE send_log ADD COLUMN error_status INTEGER")
 
 
 def _text(value: Any) -> str | None:
