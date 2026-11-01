@@ -1,0 +1,8 @@
+{
+  "name": "pagewire",
+  "title": "Pagewire Spike",
+  "description": "Throwaway: sends reading-session events to the Pagewire spike listener.",
+  "author": "Vivek Ranjan",
+  "version": "0.1.0",
+  "files": ["manifest.json", "device.json", "config.json", "README.md"]
+}

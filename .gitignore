@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime state. The relay keeps its SQLite database and its tokens here on the
+# deployed host; tokens must never be committed. See AGENTS.md.
+state/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+.env.*
+!.env.example
+token.json
+spike/plugin/token.json
+
+# Spike output
+spike/events.jsonl
+spike/downloads/
+
+# Editors / OS
+.DS_Store
+.idea/
+*.swp

@@ -1,0 +1,39 @@
+{
+  "title": "Pagewire Spike",
+  "description": "Throwaway: sends reading-session events to the Pagewire spike listener.",
+  "author": "Vivek Ranjan",
+  "version": "0.1.0",
+
+  "token": { "file": "token.json", "path": "token" },
+  "config": { "file": "config.json" },
+
+  "events": {
+    "reader.session": {
+      "request": {
+        "method": "POST",
+        "url": "{cfg.server}/events/session",
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"v\":\"1\",\"event\":\"reader.session\",\"id\":\"{event.id}\",\"ts\":\"{event.ts}\",\"book\":\"{event.book}\",\"document\":\"{event.document}\",\"start_time\":\"{event.start_time}\",\"end_time\":\"{event.end_time}\",\"duration_seconds\":\"{event.duration_seconds}\",\"start_progress_bp\":\"{event.start_progress_bp}\",\"end_progress_bp\":\"{event.end_progress_bp}\",\"progress_scale\":\"{event.progress_scale}\"}"
+      },
+      "connect": true,
+      "toast": "Pagewire spike: session sent"
+    },
+
+    "reader.exit": {
+      "request": {
+        "method": "POST",
+        "url": "{cfg.server}/events/session",
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"v\":\"1\",\"event\":\"reader.exit\",\"id\":\"{event.id}\",\"ts\":\"{event.ts}\",\"book\":\"{event.book}\",\"percent\":\"{event.percent}\",\"end_percent\":\"{event.end_percent}\"}"
+      },
+      "connect": true,
+      "toast": "Pagewire spike: exit sent"
+    }
+  }
+}

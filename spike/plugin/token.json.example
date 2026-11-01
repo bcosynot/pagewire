@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to token.json in the plugin folder on the SD card and replace the value. token.json is gitignored and must never be committed. Pass the same value to spike/listener.py --token.",
+  "token": "REPLACE_ME"
+}
