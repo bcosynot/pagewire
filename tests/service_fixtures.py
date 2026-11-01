@@ -78,6 +78,20 @@ class _Server:
                 )
                 self._send(code, body)
 
+            def do_PATCH(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                outer.requests.append(urllib.parse.urlparse(self.path).path)
+                outer.headers.append({k.lower(): v for k, v in self.headers.items()})
+                try:
+                    payload = json.loads(raw or b"{}")
+                except ValueError:
+                    payload = None
+                code, body = outer.handle_patch(
+                    urllib.parse.urlparse(self.path).path, payload, self.headers
+                )
+                self._send(code, body)
+
             def _send(self, code: int, body: bytes) -> None:
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
@@ -93,6 +107,11 @@ class _Server:
         raise NotImplementedError
 
     def handle_post(
+        self, path: str, payload: Any, headers: Any
+    ) -> tuple[int, bytes]:
+        raise NotImplementedError
+
+    def handle_patch(
         self, path: str, payload: Any, headers: Any
     ) -> tuple[int, bytes]:
         raise NotImplementedError
@@ -115,25 +134,55 @@ class ReadwiseServer(_Server):
     requests: list[str] = field(default_factory=list)
     headers: list[dict[str, str]] = field(default_factory=list)
     creations: list[dict[str, Any]] = field(default_factory=list)
+    # Sessions recorded through `POST /sessions`, verbatim, in arrival order. The relay's
+    # whole delivery half is about what it puts in these bodies.
+    sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Every attempt that reached the session endpoint, including ones answered with a
+    # failure, so a test can read the retry log the way the owner would.
+    session_attempts: list[dict[str, Any]] = field(default_factory=list)
+    # Status codes to answer with, in order, before the endpoint behaves. This is how a
+    # 5xx-then-success retry is simulated without a flaky network.
+    fail_plan: list[int] = field(default_factory=list)
+    patches: list[dict[str, Any]] = field(default_factory=list)
     _next_id: int = 4790033
+    _next_session_id: int = 90211876
 
     # -- the API -----------------------------------------------------------
 
     def handle_get(self, path: str, params: dict[str, list[str]]) -> tuple[int, bytes]:
-        if path != "/books/api/v1/books":
-            return 404, _json({"error": "not_found"})
         refusal = self._refuse(write=False)
         if refusal is not None:
             return refusal
-        wanted = params.get("isbns", []) + params.get("ids", [])
-        results = [
-            book
-            for book in self.library.values()
-            if str(book["id"]) in wanted or book.get("isbn") in wanted
-        ]
-        return 200, _json({"results": results, "next": None})
+
+        if path == "/books/api/v1/books":
+            wanted = params.get("isbns", []) + params.get("ids", [])
+            results = [
+                book
+                for book in self.library.values()
+                if str(book["id"]) in wanted or book.get("isbn") in wanted
+            ]
+            return 200, _json({"results": results, "next": None})
+
+        if path == "/books/api/v1/sessions":
+            # The reconciliation read: what the relay asks when it does not know whether
+            # a claimed session landed. Filters are the documented ones.
+            wanted_books = {str(v) for v in params.get("book_ids", [])}
+            wanted_ids = {str(v) for v in params.get("ids", [])}
+            after = params.get("started_after", [None])[0]
+            results = [
+                session
+                for session in self.sessions
+                if (not wanted_books or str(session["book_id"]) in wanted_books)
+                and (not wanted_ids or str(session["id"]) in wanted_ids)
+                and (after is None or session["started_at"] >= after)
+            ]
+            return 200, _json({"results": results, "next": None})
+
+        return 404, _json({"error": "not_found"})
 
     def handle_post(self, path: str, payload: Any, headers: Any) -> tuple[int, bytes]:
+        if path == "/books/api/v1/sessions":
+            return self._record_sessions(payload)
         if path != "/books/api/v1/books":
             return 404, _json({"error": "not_found"})
         refusal = self._refuse(write=True)
@@ -186,6 +235,117 @@ class ReadwiseServer(_Server):
                     "error": None,
                 }
             )
+        return 200, _json({"results": results})
+
+    def handle_patch(self, path: str, payload: Any, headers: Any) -> tuple[int, bytes]:
+        """`PATCH /books`: the shelf and finished date, per the documented shape."""
+        if path != "/books/api/v1/books":
+            return 404, _json({"error": "not_found"})
+        refusal = self._refuse(write=True)
+        if refusal is not None:
+            return refusal
+
+        results = []
+        for item in (payload or {}).get("items", []):
+            self.patches.append(item)
+            book = next(
+                (b for b in self.library.values() if str(b["id"]) == str(item.get("id"))),
+                None,
+            )
+            if book is None:
+                results.append(
+                    {
+                        "id": item.get("id"),
+                        "status": "error",
+                        "error": {"code": "not_found", "message": "No such book."},
+                    }
+                )
+                continue
+            for field_name in ("status", "finished_reading_at", "started_reading_at"):
+                if field_name in item:
+                    book[field_name] = item[field_name]
+            results.append({"id": book["id"], "status": "updated", "error": None})
+        return 200, _json({"results": results})
+
+    def _record_sessions(self, payload: Any) -> tuple[int, bytes]:
+        """`POST /sessions`, with the documented constraints enforced.
+
+        Recorded verbatim, because the point of the relay's payload is what it says. The
+        constraints are the ones the docs state: 1–10 items, `ebook` requires the percent
+        pair, `ended_at` no more than 24 hours after `started_at`.
+        """
+        items = (payload or {}).get("items", [])
+        # Recorded before the refusal check: an attempt that was turned away is exactly
+        # what a retry log is made of.
+        self.session_attempts.append({"items": items})
+
+        refusal = self._refuse(write=True)
+        if refusal is not None:
+            self.session_attempts[-1]["status_code"] = refusal[0]
+            return refusal
+
+        if not 1 <= len(items) <= 10:
+            return 422, _json(
+                {
+                    "error": "invalid_value",
+                    "error_description": "items must hold 1 to 10 sessions",
+                }
+            )
+
+        planned = self.fail_plan.pop(0) if self.fail_plan else None
+        if planned is not None:
+            self.session_attempts[-1]["status_code"] = planned
+            return planned, _json(
+                {"error": "internal_error", "error_description": "the service said no"}
+            )
+
+        results = []
+        for item in items:
+            missing = [
+                name
+                for name in ("book_id", "started_at", "ended_at", "format")
+                if item.get(name) is None
+            ]
+            if item.get("format") == "ebook":
+                missing += [
+                    name
+                    for name in ("percent_at_start", "percent_at_end")
+                    if item.get(name) is None
+                ]
+            if missing:
+                results.append(
+                    {
+                        "status": "error",
+                        "session_id": None,
+                        "error": {"code": "missing", "message": ", ".join(missing)},
+                    }
+                )
+                continue
+
+            # "The book has to be in your library already. A book_id that is not in your
+            # library results in an error with code not_found."
+            if int(item["book_id"]) not in {int(book["id"]) for book in self.library.values()}:
+                results.append(
+                    {
+                        "status": "error",
+                        "session_id": None,
+                        "error": {
+                            "code": "not_found",
+                            "message": "No book with that id is in your library.",
+                        },
+                    }
+                )
+                continue
+
+            self._next_session_id += 1
+            session = dict(item)
+            session["id"] = self._next_session_id
+            self.sessions.append(session)
+            results.append(
+                {"status": "created", "session_id": self._next_session_id, "error": None}
+            )
+
+        self.session_attempts[-1]["status_code"] = 200
         return 200, _json({"results": results})
 
     def _refuse(self, *, write: bool) -> tuple[int, bytes] | None:

@@ -61,6 +61,10 @@ class Sitting:
     end_progress_bp: int | None
     finalised: bool
     event_ids: tuple[str, ...]
+    # The device's own `end_percent == 100`: the book was finished. Carried through the
+    # derivation rather than re-derived at delivery time, because the flag belongs to the
+    # firmware session that saw it and the raw events are not re-read on the delivery path.
+    finished: bool = False
 
 
 @dataclass(frozen=True)
@@ -297,6 +301,9 @@ def _build(
         end_progress_bp=last.end_progress_bp,
         finalised=finalised,
         event_ids=tuple(session.event_id for session, _ in chunk),
+        # Any constituent reporting 100 % finished the book — the device says this on the
+        # session that reached the end, and a stitched sitting keeps the fact.
+        finished=any(session.finished for session, _ in chunk),
     )
 
 

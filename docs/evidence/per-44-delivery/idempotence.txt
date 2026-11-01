@@ -1,0 +1,3 @@
+sessions after the first run:  2
+sessions after the second run: 2
+requests made by the second run: 0

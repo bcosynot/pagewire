@@ -1,0 +1,6 @@
+unmatched book status: unmatched
+unmatched book readwise_id: 4799999
+its sittings in the deliverable set: 0 (the join requires status auto/confirmed)
+requests naming it: 0
+send-log rows for it: 0
+delivered: 2
