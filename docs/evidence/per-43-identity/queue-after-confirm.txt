@@ -1,0 +1,4 @@
+books in the confirmation queue:   84
+books marked auto by the CLI run:  15
+books confirmed:                   1
+books that failed, with a reason:  0

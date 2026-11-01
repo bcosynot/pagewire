@@ -16,9 +16,9 @@ The two complaints that started this:
 
 ## Status
 
-Building. Five of the epic's ten children are merged on `main` — the relay's ingest,
-derivation and identification layers — and the device-side path is verified on real
-hardware. **Nothing is delivered to either service yet**, so the two complaints above
+Building. Six of the epic's ten children are merged on `main` — the relay's ingest,
+derivation, identification and identity layers — and the device-side path is verified on
+real hardware. **Nothing is delivered to either service yet**, so the two complaints above
 still stand.
 
 Merged so far:
@@ -30,12 +30,14 @@ Merged so far:
 - **The metadata sweep** (`PER-42`) — the card read through the reader's own File
   Transfer web server, giving every book its title, author and ISBN keyed on the
   content hash. Run against the real card: 100 books, 100 rows.
+- **Book identity and the review page** (`PER-43`) — an ISBN match is added to Readwise
+  and Hardcover with no gate; anything ambiguous waits in the page for one confirmation.
+  Of the card's 100 books, 15 carry an ISBN and resolve themselves; 85 need a decision.
 - **The device spike** (`PER-39`) — the event path, the drain behaviour and the
   document hash all confirmed against hardware.
 
-Next: **book identity and the review page** (`PER-43`), which both delivery children
-wait on, then delivery to Readwise (`PER-44`) and Hardcover (`PER-45`), then deploy
-(`PER-46`) and the end-to-end check on the device (`PER-47`).
+Next: delivery to Readwise (`PER-44`) and Hardcover (`PER-45`), then deploy (`PER-46`)
+and the end-to-end check on the device (`PER-47`).
 
 The design of record is
 [`docs/superpowers/specs/2026-10-31-pagewire-design.md`](docs/superpowers/specs/2026-10-31-pagewire-design.md),
@@ -94,6 +96,38 @@ current card, about 14 minutes at the device's ~490 KB/s. A later sweep skips an
 already identified and finishes in seconds, because the identity is keyed on the SD
 path. Tunables: `PAGEWIRE_DEVICE_ADDRESS`, `PAGEWIRE_SWEEP_TIMEOUT_SECONDS`,
 `PAGEWIRE_DB`.
+
+## Resolving identity
+
+A sweep records what the card knows; this decides which book each row *is*, as each
+service knows it, and writes both services' ids onto the row:
+
+```sh
+python -m pagewire.identity          # match everything an ISBN can match
+python -m pagewire.identity --list   # show the queue and the reasons, offline
+```
+
+An ISBN match is confident, so it is added to Readwise and Hardcover with no gate. A book
+without one is left `unmatched` and appears in the review page, where one confirmation
+writes its ids and ends the ambiguity — a wrong match sends immutable Readwise sittings to
+the wrong book, so the relay never guesses. On the current card that is 15 books resolving
+themselves and 85 waiting.
+
+The page is served by the relay at `/review`, gated on the same shared device token
+(`?token=…`), with a form per book and a one-click confirmation from Hardcover's
+exact-title match. A refused call — an under-scoped token, most often — is recorded on the
+row and shown there, and **Re-run automatic matching** retries the queue once the cause is
+fixed.
+
+Tunables: `PAGEWIRE_READWISE_ENABLED`, `PAGEWIRE_READWISE_TOKEN`,
+`PAGEWIRE_READWISE_BASE_URL`, `PAGEWIRE_HARDCOVER_ENABLED`, `PAGEWIRE_HARDCOVER_TOKEN`,
+`PAGEWIRE_HARDCOVER_ENDPOINT`, `PAGEWIRE_SERVICE_TIMEOUT_SECONDS`, `PAGEWIRE_DB`.
+
+Evidence for this, including the page itself and a run over all 100 swept books, is in
+[`docs/evidence/per-43-identity/`](docs/evidence/per-43-identity/) — with the boundary
+stated plainly: no live service token existed in the build environment, so the vendor
+round trips are exercised against servers speaking the documented shapes and remain
+owner-verified.
 
 ## Running the spike listener
 
