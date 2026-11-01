@@ -6,8 +6,9 @@ across queued events or reboots". The spike confirmed the format (`f55fb3e8-1`) 
 the same id arriving twice, so idempotence is enforced by the primary key rather than by a
 check-then-insert that would race.
 
-Later tickets fill the other three tables. They are created here so the schema is visible
-in one place, and so the sweep that writes them does not need a migration.
+The metadata sweep fills `books`; the delivery tickets fill `send_log`. All four tables are
+created here so the schema is visible in one place, and so the code that writes them does
+not need a migration.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -80,6 +82,25 @@ CREATE TABLE IF NOT EXISTS send_log (
     UNIQUE (document, started_at, destination)
 );
 """
+
+
+@dataclass(frozen=True)
+class BookRecord:
+    """One book, as the metadata sweep found it on the card.
+
+    `document` is the device's own content hash, which is why it is the primary key:
+    it survives a rename, a move, or a reorganised card. `hash_method` records which of
+    the device's two methods produced it, because the setting can change and a device
+    reset would otherwise silently re-key every row.
+    """
+
+    document: str
+    hash_method: str
+    book_path: str
+    title: str | None = None
+    author: str | None = None
+    isbn: str | None = None
+    status: str = "unmatched"
 
 
 class Storage:
@@ -200,6 +221,92 @@ class Storage:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
+            )
+
+    # -- books (the metadata sweep's table) --------------------------------
+
+    def upsert_books(self, records: Iterable[BookRecord]) -> int:
+        """Insert or refresh book rows, in one transaction. Returns how many were written.
+
+        Written as an upsert rather than an insert so that a second sweep over a card
+        whose books have moved or been re-read refreshes the stored path and metadata
+        instead of failing on the primary key. Existing values win where the new sweep
+        has none: a sweep that could not read an ISBN must not erase one already known.
+        """
+        updated_at = int(time.time())
+        rows = [
+            (
+                record.document,
+                record.hash_method,
+                record.book_path,
+                record.title,
+                record.author,
+                record.isbn,
+                record.status,
+                updated_at,
+                updated_at,
+            )
+            for record in records
+        ]
+        if not rows:
+            return 0
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO books
+                    (document, hash_method, book_path, title, author, isbn, status,
+                     first_seen_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(document) DO UPDATE SET
+                    hash_method = excluded.hash_method,
+                    book_path   = excluded.book_path,
+                    title       = COALESCE(excluded.title, books.title),
+                    author      = COALESCE(excluded.author, books.author),
+                    isbn        = COALESCE(excluded.isbn, books.isbn),
+                    status      = excluded.status,
+                    updated_at  = excluded.updated_at
+                """,
+                rows,
+            )
+        return len(rows)
+
+    def known_book_paths(self) -> set[str]:
+        """Every SD path already tied to a book, so a sweep can skip re-downloading it.
+
+        Keyed on the path rather than the hash deliberately: the listing carries names
+        and sizes but no hash, and hashing a file means downloading it — which is the
+        cost this exists to avoid on a second run.
+        """
+        with self._connect() as connection:
+            return {
+                row[0]
+                for row in connection.execute(
+                    "SELECT book_path FROM books WHERE book_path IS NOT NULL"
+                )
+            }
+
+    def books(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return list(connection.execute("SELECT * FROM books ORDER BY book_path"))
+
+    def count_books(self) -> int:
+        with self._connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM books").fetchone()[0])
+
+    def books_needing_confirmation(self) -> list[sqlite3.Row]:
+        """Rows no ISBN can resolve, so a human has to confirm the match once.
+
+        The design's rule is that only a confident match is added automatically, and an
+        ISBN is what makes a match confident. Without one the row waits here rather than
+        being guessed at, because a Readwise sitting cannot be moved to another book
+        after it has been written.
+        """
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM books WHERE isbn IS NULL AND status = 'unmatched'"
+                    " ORDER BY book_path"
+                )
             )
 
 

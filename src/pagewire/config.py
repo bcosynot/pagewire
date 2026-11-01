@@ -31,6 +31,16 @@ def _int(env: Mapping[str, str], name: str, default: int) -> int:
         raise ValueError(f"{PREFIX}{name} must be an integer, got {raw!r}") from exc
 
 
+def _float(env: Mapping[str, str], name: str, default: float) -> float:
+    raw = env.get(PREFIX + name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{PREFIX}{name} must be a number, got {raw!r}") from exc
+
+
 def _flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
     raw = env.get(PREFIX + name)
     if raw is None or raw == "":
@@ -78,8 +88,13 @@ class Settings:
     # uses one minute; Hardcover's free plan allows 60 requests a minute.
     hardcover_throttle_seconds: int = 60
 
-    # The device's address for the metadata sweep. Empty until that ticket lands.
+    # The device's address for the metadata sweep — its IP from the screen, or
+    # `crosspoint.local` (mDNS, which may not resolve from inside the LXC).
     device_address: str = ""
+
+    # How long to wait on the device's File Transfer web server. It is a microcontroller
+    # serving 400 MB of EPUBs over WiFi, so this is generous by default.
+    sweep_timeout_seconds: float = 60.0
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -102,4 +117,5 @@ class Settings:
                 env, "HARDCOVER_THROTTLE_SECONDS", cls.hardcover_throttle_seconds
             ),
             device_address=_str(env, "DEVICE_ADDRESS"),
+            sweep_timeout_seconds=_float(env, "SWEEP_TIMEOUT_SECONDS", cls.sweep_timeout_seconds),
         )
