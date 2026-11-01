@@ -100,7 +100,7 @@ def sweep(
     try:
         epubs = list_epubs(device)
     except DeviceError as exc:
-        raise SweepError(f"could not reach the device at {device.address}: {exc}") from exc
+        raise SweepError(f"could not reach the device: {exc}") from exc
 
     known = storage.known_book_paths()
     pending = [entry for entry in epubs if entry.path not in known]

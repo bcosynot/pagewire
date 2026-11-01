@@ -1,0 +1,9 @@
+device: 192.168.0.217 (File Transfer mode), listing walked via GET /api/files?path=...
+EPUBs on the card      : 100
+books rows in the relay: 100
+bytes on the card      : 409,226,134
+
+on the card with no row : none
+a row with no card file : none
+
+verdict: EVERY EPUB HAS A ROW
