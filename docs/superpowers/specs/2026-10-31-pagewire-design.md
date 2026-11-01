@@ -373,16 +373,44 @@ book A, put it down, read B, come back to A — that is **two sittings in A**, a
 that **no session for any other book falls inside the gap**. A gap containing another
 book's reading is a boundary, not a pause, no matter how short it is.
 
-**Open decision — does the pre-flush lump count as pause?** The firmware compacts idle
-gaps out of `duration_seconds`, so the gaps inside a sitting are unrecoverable. The only
-trace is the gap between `end_time` and the event's `ts` (its emission time), which on the
-spike's real session was 32 seconds. Awaiting Vivek's ruling; my proposal is that
-`ended_at` = `end_time` (the last counted page turn, which is what he said the end should
-be) and `paused_seconds` = the pre-flush lump **plus** the stitched inter-session gaps,
-with the 30-minute window deciding each — a gap at or over the window is a boundary, not a
-pause. That makes the window do double duty and keeps a sitting always ending on a page
-turn. One case it mishandles: a book left open with the device sleeping hours later
-produces an hours-long lump, which the window catches by demoting it to a boundary.
+**Open decision — what makes a pause, and where a sitting ends.** The firmware compacts
+idle gaps out of `duration_seconds`, so the gaps inside a sitting are unrecoverable. The
+only trace of idle time within one sitting is the gap between `end_time` (the last counted
+page turn) and the event's `ts` (its emission time) — 32 seconds on the spike's real
+session, where the wall span `ts − start_time` was 2670s, `duration_seconds` was 2638, and
+`end_time − start_time` was 2638 exactly.
+
+That leaves two self-consistent readings, and each breaks one of Vivek's two rules:
+
+- **End at the last page turn, pause only from stitching.** `ended_at` = `end_time`, so a
+  sitting always ends on a page turn ("the last page turn should be the end"). Pause is
+  then zero for a single sitting and only ever comes from gaps between stitched sessions —
+  which means a mid-sitting pause is invisible. Read twenty minutes, sit for fifteen, read
+  ten more in the same sitting: the record says thirty minutes with no pause.
+- **End at the flush, pause is the lump.** `ended_at` = `ts`, so the span includes the
+  trailing idle and `paused_seconds` can carry it, keeping the arithmetic honest
+  (`span − paused` = the device's active seconds). But the record's end is when the device
+  flushed, not when he stopped turning pages — and if a book is left open and the device
+  sleeps an hour later, that hour becomes the session's end.
+
+**Proposal, applying the 30-minute window to each gap rather than only to stitch points:**
+start with `started_at` = `start_time`. Take the trailing gap `ts − end_time`. If it is
+under the window, treat it as the same kind of thing as a gap between stitched sessions —
+a pause — so `ended_at` = `ts` and `paused_seconds` = trailing gap + stitched gaps. If it
+is at or over the window, it is not a pause but a boundary: the sitting ended at the last
+page turn, so `ended_at` = `end_time` and the trailing gap is discarded. Short gaps are
+pauses, long gaps end sittings — which is what he asked for in both sentences.
+
+**Correction against an earlier draft:** the first version of this paired `ended_at` =
+`end_time` with a non-zero `paused_seconds`. That double-counts, since `end_time −
+start_time` already equals the active seconds, so subtracting a pause from that span would
+report less reading than the device measured. Either pair it as above, or accept
+`paused_seconds` = 0 for single sittings.
+
+UNVERIFIED and load-bearing: this assumes a consumer reads active time as
+`ended_at − started_at − paused_seconds`. That is Readwise's most plausible arithmetic but
+it is not documented, and if it instead sums sessions without subtracting pauses, the
+pause field is decorative and the choice stops mattering.
 
 Because Readwise cannot amend a session after the fact, nothing is delivered while it is
 still open: a derived session is only eligible once no new constituent event has arrived
