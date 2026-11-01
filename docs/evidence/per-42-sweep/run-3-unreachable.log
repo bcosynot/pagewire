@@ -1,0 +1,7 @@
+$ python -m pagewire.sweep --address 192.168.0.217:9 --db live.db    # nothing listening there
+sweep failed: could not reach the device: could not reach http://192.168.0.217:9: <urlopen error [Errno 111] Connection refused>
+exit=1
+
+$ python -m pagewire.sweep --address 192.168.0.218 --db live.db        # no such host on the LAN
+sweep failed: could not reach the device: could not reach http://192.168.0.218: <urlopen error [Errno 113] No route to host>
+exit=1
