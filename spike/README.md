@@ -147,12 +147,41 @@ and `sleep.enter` has never appeared — so either the card still carries the pr
 manifest, or sleep has not been used as the way out of the book. Both are worth ruling
 out rather than assuming.
 
-Working hypothesis for the missing session summary: the docs require "at least 10 active
-seconds **and a trustworthy positive start time**", and the device had never had a WiFi
-join, so SNTP had never run and there was no trustworthy time to stamp a sitting with.
-If that is right, sessions are suppressed until the clock has been set at least once —
-which would mean the design cannot place a sitting in time on a device whose clock has
-never been set, and Readwise wants `started_at`.
+**CONFIRMED, third run: sessions are suppressed until the clock has been set.** Once the
+device had joined WiFi (SNTP sets the clock), a full `reader.session` arrived
+(`spike/events.jsonl` line 10):
+
+```json
+{"book": "/Samit Basu - The Jinn-Bot of Shantiport.epub",
+ "document": "8f49706e45186c3185a9a7fcbcabe6f5",
+ "duration_seconds": "2638", "start_time": "1793550349", "end_time": "1793552987",
+ "start_progress_bp": "1799", "end_progress_bp": "2244", "progress_scale": "10000",
+ "event": "reader.session", "id": "f55fb3e8-1", "ts": "1793553019", "v": "1"}
+```
+
+Everything the design needs, and it agrees with the docs on the arithmetic: `end_time -
+start_time` = 2638 = `duration_seconds`, exactly. `ts` (emission) is 32 seconds after
+`end_time`, and a `sleep.enter` for the same book and boot (id `f55fb3e8-2`) shares that
+second — so the pre-sleep hook is what flushed it. That 32 seconds is the session's own
+idle time, and it is only visible as the gap between `end_time` and `ts`; the firmware
+compacts idle gaps out of `duration_seconds`, so individual gaps inside a sitting cannot
+be recovered.
+
+Four more things this run established:
+
+- **Duplicate delivery is real.** Two byte-identical `sleep.enter` lines, same id
+  `1400c035-1`, both appended. Nothing was wrong with the device: this is the documented
+  at-least-once contract, and it means the relay's dedupe on `id` is load-bearing, not
+  defensive padding.
+- **A `sleep.enter` from outside a reader sends literal placeholders** — `{event.book}`,
+  `{event.percent}`, `{event.end_percent}` — because sleeping outside a book carries none
+  of those variables. The relay must treat a value shaped like `{event.…}` as absent.
+- **`end_percent` substituted fine in this run** (18 and 22) after failing to in the three
+  earlier ones. Cause not established. Finish detection can use it, but only once it is
+  known to be populated; a placeholder must read as "unknown", never as 0.
+- **The id nonce is not reliable as a boot marker.** Two `reader.exit` events one second
+  apart (`1793549736`, `1793549735`) carried different nonces. Whatever the nonce is
+  scoped to, the relay must key dedupe on the whole id and never infer boots from it.
 
 ## Next run (the one that settles it)
 
