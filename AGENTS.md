@@ -31,6 +31,12 @@ limits) that the code exists to satisfy, and the decisions already made with the
 - Any on-device code beyond a declarative `device.json` manifest.
 - Two-way sync: reading positions are never pushed back to the device.
 
+## Commands
+
+`make help` lists them. `make test` runs the tests (using `.venv` when it exists),
+`make spike` runs the throwaway capture listener and prints the LAN address the device
+must reach, `make ip` prints just that address.
+
 ## The spike kit
 
 `spike/` is throwaway. It exists to answer two questions with real hardware: whether

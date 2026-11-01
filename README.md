@@ -44,9 +44,25 @@ tests/                    tests for the relay
 ## Development
 
 ```sh
-python -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'
-pytest
+make test     # runs the tests, using .venv when it exists
+make venv     # creates .venv and installs the package with its dev extras
+make help     # the rest
 ```
+
+Equivalent by hand: `python -m venv .venv && . .venv/bin/activate`, then
+`pip install -e '.[dev]'`, then `pytest`.
+
+## Running the spike listener
+
+```sh
+make spike                      # capture listener, prints the LAN address to use
+make spike BOOK=/tmp/book.epub  # ...and also check the document hash against a file
+make ip                         # just the LAN address
+```
+
+`make spike` creates a local `spike/plugin/token.json` if there isn't one, then prints
+the exact `config.json` and `token.json` contents to put on the SD card, and the URL the
+device should post to. The device reaches this host over the LAN, so a `0.0.0.0` bind is
+not enough on its own — that's why the address is printed rather than the bind.
 
 See [AGENTS.md](AGENTS.md) for the conventions that apply to automated work in this repo.

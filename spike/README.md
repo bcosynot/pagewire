@@ -41,13 +41,18 @@ a step filled in from expectation rather than observation is worse than a blank 
 
       server: ______________________
 
-- [ ] **NOT YET RUN — 3. Start the listener.** On this machine:
+- [ ] **NOT YET RUN — 3. Start the listener.** From the repo root:
 
       ```sh
-      python spike/listener.py --token "$(python -c "import json;print(json.load(open('spike/plugin/token.json'))['token'])")"
+      make spike
       ```
 
-      Confirm the log line says `listening on http://0.0.0.0:8799`.
+      It creates `spike/plugin/token.json` if there isn't one, prints the LAN address the
+      device has to reach, prints the exact `config.json` and `token.json` contents for
+      the SD card, and then runs. `make spike BOOK=/path/to/book.epub` additionally
+      checks the document hash against that file. Leave it running.
+
+      address it printed: ______________________
 
 - [ ] **NOT YET RUN — 4. See it on the device.** Home → Plugins lists "Pagewire Spike".
       If it does not, stop here: the manifest is wrong, and the device will tell you
