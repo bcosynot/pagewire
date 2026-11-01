@@ -344,6 +344,15 @@ produces a new row for the same book — rows must be mergeable or reassignable 
 And one service book can be pointed at by two different hashes (two copies of the same
 file) — allowed, but the relay must not be surprised when both report progress.
 
+**Third wrinkle, measured:** the hash samples; it does not read the whole file. For the
+spike's book (964,964 bytes) only six 1KB chunks were hashed — the first six offsets, up
+to 262,144 — because every later offset lies beyond the file size. Two different EPUBs
+sharing their opening few kilobytes would therefore produce the same `document`. That is
+inherent to KOSync's scheme, not something the relay can fix, but the relay can notice:
+store the path and title alongside the hash, and when a known hash arrives attached to a
+different path and title, flag the row instead of silently merging two books into one
+sitting history.
+
 **Derive and deliver sessions.** A firmware session ends at sleep/exit, which is not the
 same as Vivek's rule. His rule: "when i started reading and when it ended. if i don't
 pick it up again in 30 minutes, then when i turned the page last should be the end
