@@ -1,0 +1,151 @@
+# The one row both services knew, read back out of the database
+# document 670108835427962c46d53ea3cc1fd5cf (ISBN 9781627790376)
+
+  document                 '670108835427962c46d53ea3cc1fd5cf'
+  hash_method              'content'
+  book_path                '/Christian, Brian & Griffiths, Tom/Algorithms to Live By_ The Computer Science of Human Decisions - Brian Christian & Tom Griffiths.epub'
+  title                    'Algorithms to Live By: The Computer Science of Human Decisions'
+  author                   'Brian Christian'
+  isbn                     '9781627790376'
+  readwise_id              '4790034'
+  hardcover_id             '90000'
+  hardcover_edition_id     '30000'
+  status                   'auto'
+  error                    None
+  first_seen_at            1
+  updated_at               1793572157
+
+# What the doubles were asked, in order — the calls the relay makes:
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  readwise    /books/api/v1/books
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)
+  hardcover   POST /v1/graphql  (query EditionByIsbn($isbn: String!) { editions(where: {isbn_13: {_eq: …)
+  hardcover   POST /v1/graphql  (query LibraryEntry($bookId: Int!, $editionId: Int!) { me { account_pri…)
+  hardcover   POST /v1/graphql  (mutation AddUserBook($object: UserBookCreateInput!) { insert_user_book…)

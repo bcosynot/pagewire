@@ -6,9 +6,13 @@ across queued events or reboots". The spike confirmed the format (`f55fb3e8-1`) 
 the same id arriving twice, so idempotence is enforced by the primary key rather than by a
 check-then-insert that would race.
 
-The metadata sweep fills `books`; the delivery tickets fill `send_log`. All four tables are
-created here so the schema is visible in one place, and so the code that writes them does
-not need a migration.
+The metadata sweep fills `books`; identity resolution writes the ids the two services
+issued onto those rows; the delivery tickets fill `send_log`. All four tables are created
+here so the schema is visible in one place.
+
+`CREATE TABLE IF NOT EXISTS` is a lie about an existing database — it does nothing to a
+table that is already there — so a column added to `SCHEMA` would never reach the deployed
+relay's file. Additions therefore also go through `_migrate`.
 """
 
 from __future__ import annotations
@@ -19,6 +23,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+# The two statuses that mean something identified the book. Delivery gates on these; every
+# other value — `unmatched` above all — must stay undelivered.
+MATCHED_STATUSES = ("auto", "confirmed")
 
 SCHEMA = """
 -- Raw events, exactly as they arrived. Kept even after they are turned into sittings, so
@@ -36,6 +44,12 @@ CREATE TABLE IF NOT EXISTS raw_events (
 -- One row per book, keyed on the device's content hash. `hash_method` records which of
 -- the two methods keyed the row (content or filename), because the device can be
 -- switched between them and a reset would silently re-key everything.
+--
+-- `readwise_id`, `hardcover_id` and `hardcover_edition_id` are the ids the services
+-- issued for this book, written once resolution has them. `status` says how they were
+-- arrived at: `unmatched` (nothing matched it yet), `auto` (a confident match), or
+-- `confirmed` (Vivek accepted a match in the review page). `error` holds the last
+-- failure's own words, so a refused call is visible rather than a silent skip.
 CREATE TABLE IF NOT EXISTS books (
     document       TEXT PRIMARY KEY,
     hash_method    TEXT,
@@ -47,6 +61,7 @@ CREATE TABLE IF NOT EXISTS books (
     hardcover_id   TEXT,
     hardcover_edition_id TEXT,
     status         TEXT NOT NULL DEFAULT 'unmatched',
+    error          TEXT,
     first_seen_at  INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
 );
@@ -131,6 +146,7 @@ class Storage:
     def _init(self) -> None:
         with self._connect() as connection:
             connection.executescript(SCHEMA)
+            _migrate(connection)
 
     def store_event(
         self,
@@ -232,6 +248,12 @@ class Storage:
         whose books have moved or been re-read refreshes the stored path and metadata
         instead of failing on the primary key. Existing values win where the new sweep
         has none: a sweep that could not read an ISBN must not erase one already known.
+
+        `status` is deliberately *not* refreshed from the record. A sweep over a card
+        cannot know what resolution decided, and letting the record's default win would
+        silently un-match every book the relay had already identified — observed as a
+        second sweep resetting the whole queue. Only a row's first insert takes its
+        status from the record.
         """
         updated_at = int(time.time())
         rows = [
@@ -263,7 +285,6 @@ class Storage:
                     title       = COALESCE(excluded.title, books.title),
                     author      = COALESCE(excluded.author, books.author),
                     isbn        = COALESCE(excluded.isbn, books.isbn),
-                    status      = excluded.status,
                     updated_at  = excluded.updated_at
                 """,
                 rows,
@@ -293,6 +314,13 @@ class Storage:
         with self._connect() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM books").fetchone()[0])
 
+    def book(self, document: str) -> sqlite3.Row | None:
+        """One book row by its content hash, or None when no row carries that hash."""
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM books WHERE document = ?", (document,)
+            ).fetchone()
+
     def books_needing_confirmation(self) -> list[sqlite3.Row]:
         """Rows no ISBN can resolve, so a human has to confirm the match once.
 
@@ -308,6 +336,99 @@ class Storage:
                     " ORDER BY book_path"
                 )
             )
+
+    def books_with_errors(self) -> list[sqlite3.Row]:
+        """Rows whose last resolution attempt failed, so the page can show why."""
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM books WHERE error IS NOT NULL ORDER BY book_path"
+                )
+            )
+
+    def deliverable_books(self) -> list[sqlite3.Row]:
+        """Rows a destination may be told about: the ones something actually matched.
+
+        `unmatched` covers both a book no ISBN could resolve and one whose resolution
+        failed, and neither may be delivered — no matter how many sittings are derived
+        against them. A wrong match sends immutable sittings to the wrong book, so the
+        gate is the status, and only the two statuses that mean "identified" pass it.
+        """
+        placeholders = ", ".join("?" for _ in MATCHED_STATUSES)
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    f"SELECT * FROM books WHERE status IN ({placeholders})"
+                    " ORDER BY book_path",
+                    MATCHED_STATUSES,
+                )
+            )
+
+    # -- identity (what the two services issued) ---------------------------
+
+    def set_book_identity(
+        self,
+        document: str,
+        *,
+        readwise_id: str | None = None,
+        hardcover_id: str | None = None,
+        hardcover_edition_id: str | None = None,
+        status: str = "auto",
+    ) -> None:
+        """Record the ids a service issued, and mark the row matched.
+
+        Only the ids actually passed are written — the rest keep whatever they had — so a
+        Readwise-only or Hardcover-only configuration works without inventing ids for the
+        destination that is switched off. `error` is cleared, because a row that resolved
+        is no longer in a failed state and a stale reason on screen would misreport it.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE books SET
+                    readwise_id          = COALESCE(?, readwise_id),
+                    hardcover_id         = COALESCE(?, hardcover_id),
+                    hardcover_edition_id = COALESCE(?, hardcover_edition_id),
+                    status               = ?,
+                    error                = NULL,
+                    updated_at           = ?
+                WHERE document = ?
+                """,
+                (
+                    readwise_id,
+                    hardcover_id,
+                    hardcover_edition_id,
+                    status,
+                    int(time.time()),
+                    document,
+                ),
+            )
+
+    def set_book_error(self, document: str, message: str) -> None:
+        """Record why a row could not be resolved. Never touches the status.
+
+        The status is what delivery gates on, so the reason is kept in its own column: a
+        book that failed to resolve stays undeliverable, and a book that resolved stays
+        deliverable, whatever the last attempt had to say.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE books SET error = ?, updated_at = ? WHERE document = ?",
+                (message, int(time.time()), document),
+            )
+
+
+def _migrate(connection: sqlite3.Connection) -> None:
+    """Bring an older database up to the current schema, in place.
+
+    `CREATE TABLE IF NOT EXISTS` leaves an existing table exactly as it was, so a column
+    added to `SCHEMA` reaches a fresh database and no other one. The deployed relay's file
+    already holds every hash-to-book mapping the sweep took 14 minutes to collect, so the
+    column is added to it rather than the file being rebuilt.
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(books)")}
+    if "error" not in columns:
+        connection.execute("ALTER TABLE books ADD COLUMN error TEXT")
 
 
 def _text(value: Any) -> str | None:

@@ -1,0 +1,109 @@
+# python -m pagewire.identity, against the two service doubles
+# 100 swept books; only the 15 carrying an ISBN resolve without a human
+
+destinations: readwise on, hardcover on
+/Azzarello, Patty/Rise_ 3 Practical Steps for Advancing Your Career, Standing Out as a Leader, and Liking Your Life - Patty Azzarello.epub: no ISBN — held for confirmation
+/Babcock, Linda & Laschever, Sara/Ask For It - Linda Babcock & Sara Laschever.epub: no ISBN — held for confirmation
+/Bartel, Tom/How to Communicate Effectively as an Engineer Without Resorting to Management Speak - Tom Bartel - Tom Bartel.epub: no ISBN — held for confirmation
+/Bilotti, Matt/How To Become A Learning Machine_ My Tips For Reading More - Matt Bilotti.epub: no ISBN — held for confirmation
+/Brown, Brene/Daring Greatly - Brene Brown.epub: no ISBN — held for confirmation
+/Brunson, Russell/Expert Secrets - Russell Brunson.epub: no ISBN — held for confirmation
+/Burns, Brendan & Beda, Joe & Hightower, Kelsey & Evenson, Lachlan/Kubernetes_ Up and Running - Brendan Burns & Joe Beda & Kelsey Hightower & Lachlan Evenson.epub: no ISBN — held for confirmation
+/Cameron, Julia/Artist's Way, The - Julia Cameron.epub: no ISBN — held for confirmation
+/Carnegie, Dale/How to Win Friends and Influence People - Dale Carnegie.epub: no ISBN — held for confirmation
+/Chandra, Amrita/What I Learned Working At A _Scale-Down_ - ThinkGrowth.org - Amrita Chandra.epub: no ISBN — held for confirmation
+/Ching, Clarke/Bottleneck Rules_ How to Get More Done (When Working Harder isn't Working), The - Clarke Ching.epub: no ISBN — held for confirmation
+/Christian, Brian & Griffiths, Tom/Algorithms to Live By_ The Computer Science of Human Decisions - Brian Christian & Tom Griffiths.epub: matched (readwise 4790034, hardcover 90000 / 30000)
+/Christie, Agatha/Secret Adversary - Agatha Christie.epub: no ISBN — held for confirmation
+/Conrad, Charles/Richest Man in Babylon -- Six Laws of Wealth, The - Charles Conrad.epub: no ISBN — held for confirmation
+/Dan Simmons - Hyperion.epub: matched (readwise 4790035, hardcover 90001 / 30001)
+/Dinniman, Matt/Carl's Doomsday Scenario - Matt Dinniman.epub: matched (readwise 4790036, hardcover 90002 / 30002)
+/Dostoyevsky, Fyodor/Idiot, The - Fyodor Dostoyevsky.epub: no ISBN — held for confirmation
+/Douglas, Teresa & Gordon, Holly & Webber, Mike/Secrets of the Remote Workforce - Teresa Douglas & Holly Gordon & Mike Webber.epub: no ISBN — held for confirmation
+/Edwards, Jim/Copywriting Secrets_ How Everyone Can Use The Power Of Words To . No Matter What You Sell Or Who You Sell It To! - Jim Edwards.epub: no ISBN — held for confirmation
+/Eikenberry, Kevin & Turmel, Wayne/Long-Distance Leader, The - Kevin Eikenberry & Wayne Turmel.epub: no ISBN — held for confirmation
+/Ellenbogen, Oren/Leading Snowflakes_ The Engineering Manager Handbook - Oren Ellenbogen.epub: no ISBN — held for confirmation
+/EpubPress/LLM Embeddings & RAG - EpubPress.epub: no ISBN — held for confirmation
+/Feathers, Michael/Working Effectively with Legacy Code (Robert C. Martin Series) - Michael Feathers.epub: no ISBN — held for confirmation
+/Fitzgerald, F. Scott/Great Gatsby, The - F. Scott Fitzgerald.epub: matched (readwise 4790037, hardcover 90003 / 30003)
+/Flynn, Gillian/Gone Girl_ A Novel - Gillian Flynn.epub: no ISBN — held for confirmation
+/Forsgren, Nicole & Noda, Abi/Frictionless_ 7 Steps to Remove Barriers, Unlock Value, and Ouce Your Competition in the AI Era - Nicole Forsgren & Abi Noda.epub: no ISBN — held for confirmation
+/Forsgren, Nicole PhD & Humble, Jez & Kim, Gene/Accelerate_ The Science of Lean Software and DevOps_ Building aogy Organizations - Nicole Forsgren PhD & Jez Humble & Gene Kim.epub: no ISBN — held for confirmation
+/Forte, Tiago/Building a Second Brain_ A Proven Method to Organize Your Digital Life and Unlock Your Creative Potential - Tiago Forte.epub: no ISBN — held for confirmation
+/Frachon, Kate/How to make less awkward small talk - Kate Frachon.epub: no ISBN — held for confirmation
+/Frazier, Jean Kyoung/Pizza Girl - Jean Kyoung Frazier.epub: matched (readwise 4790038, hardcover 90004 / 30004)
+/Freeman, Eric & Robson, Elisabeth & Bates, Bert & Sierra, Kathy/Head First Design Patterns_ A Brain-Friendly Guide - Eric Freeman & Elisabeth Robson & Bert Bates & Kathy Sierra.epub: matched (readwise 4790039, hardcover 90005 / 30005)
+/Fried, Jason & Hansson, David Heinemeier/It Doesn't Have to Be Crazy at Work - Jason Fried & David Heinemeier Hansson.epub: no ISBN — held for confirmation
+/Garrett, Jesse James/Elements of User Experience_ User-Centered Design for the Web ad (2nd Edition) (Voices That Matter), The - Jesse James Garrett.epub: no ISBN — held for confirmation
+/Gee, Trisha/What to Look for in a Code Review - Trisha Gee.epub: no ISBN — held for confirmation
+/Graupera, Vidal/Behavioral Interview Blueprint_ A Proven Guide to Ace Your Next Job Interview - Vidal Graupera.epub: no ISBN — held for confirmation
+/Hemingway, Ernest/Sun Also Rises, The - Ernest Hemingway.epub: matched (readwise 4790040, hardcover 90006 / 30006)
+/Hinchliffe, Jo & Everard, Ben/Design an RP2040 board with KiCad - Jo Hinchliffe & Ben Everard.epub: no ISBN — held for confirmation
+/Hormozi, Alex/$100M Offers_ How To Make Offers So Good People Feel Stupid Saying No - Alex Hormozi.epub: no ISBN — held for confirmation
+/Idesis, Stanley/Good Content_ A Genuine Content Strategy for the Reluctant Marketer - Stanley Idesis.epub: no ISBN — held for confirmation
+/Ingram, Zoe/Oh My Gouache!_ The Beginner's Guide to Painting with Opaque Watercolour - Zoe Ingram.epub: no ISBN — held for confirmation
+/Jonathan Wilson - Angels with Dirty Faces How Argentinian Soccer Defined a Nation and Changed the Ga.epub: matched (readwise 4790041, hardcover 90007 / 30007)
+/Jones, Steph/Autistic Survival Guide to Therapy, The - Steph Jones.epub: no ISBN — held for confirmation
+/Jordan, Robert/Eye of the World_ Book One of The Wheel of Time, The - Robert Jordan.epub: no ISBN — held for confirmation
+/Kessler, David/Finding Meaning_ The Sixth Stage of Grief - David Kessler.epub: no ISBN — held for confirmation
+/Kim, Gene & Behr, Kevin & Spafford, George/Phoenix Project, The - Gene Kim & Kevin Behr & George Spafford.epub: no ISBN — held for confirmation
+/Kim, Gene & Humble, Jez & Debois, Patrick & Willis, John/DevOps Handbook_, The - Gene Kim & Jez Humble & Patrick Debois & John Willis.epub: no ISBN — held for confirmation
+/Kleppmann, Martin/Designing Data-Intensive Applications - Martin Kleppmann.epub: no ISBN — held for confirmation
+/Kua, Patrick/Talking with Tech Leads_ From Novices to Practitioners - Patrick Kua.epub: no ISBN — held for confirmation
+/Kuang, R. F_/Burning God, The - R. F. Kuang.epub: matched (readwise 4790042, hardcover 90008 / 30008)
+/Kuang, R. F_/Dragon Republic - R. F. Kuang.epub: matched (readwise 4790043, hardcover 90009 / 30009)
+/Kuang, R. F_/Poppy War_ 1, The - R. F. Kuang.epub: no ISBN — held for confirmation
+/LICSW, Merle Bombardieri MSW/Baby Decision_ How to Make the Most Important Choice of Your Life, The - Merle Bombardieri MSW LICSW.epub: no ISBN — held for confirmation
+/Larson, Will/Staff Engineer_ Leadership beyond the management track - Will Larson.epub: no ISBN — held for confirmation
+/Lencioni, Patrick M_/Five Dysfunctions of a Team (J-B Lencioni Series), The - Patrick M. Lencioni.epub: no ISBN — held for confirmation
+/Liu, Cixin/Dark Forest, The - Cixin Liu.epub: matched (readwise 4790044, hardcover 90010 / 30010)
+/Liu, Cixin/Three-Body Problem_ 1 (The Three-Body Problem Series), The - Cixin Liu.epub: no ISBN — held for confirmation
+/Lowes, Jennifer C_/Entrepreneurial Introvert Guide_Discover and Take advantage of thods to Kill It in the Business World, The - Jennifer C. Lowes.epub: no ISBN — held for confirmation
+/Mantle, Mickey W. & Lichty, Ron/Managing the Unmanageable_ Rules, Tools, and Insights for Managing Software People and Teams - Mickey W. Mantle & Ron Lichty.epub: no ISBN — held for confirmation
+/Olson, Donald/Frommer's Portland day by day - Donald Olson.epub: no ISBN — held for confirmation
+/Osherove, Roy/Art of Unit Testing, Second Edition_ with examples in C#, The - Roy Osherove.epub: no ISBN — held for confirmation
+/Oster, Emily/Expecting Better (The ParentData Series) - Emily Oster.epub: no ISBN — held for confirmation
+/Ousterhout, John K_/Philosophy of Software Design, 2nd Edition, A - John K. Ousterhout.epub: no ISBN — held for confirmation
+/Portigal, Steve/Interviewing Users_ How to Uncover Compelling Insights - Steve Portigal.epub: no ISBN — held for confirmation
+/Price, Devon/Unmasking Autism - Devon Price.epub: no ISBN — held for confirmation
+/Reilly, Tanya/Staff Engineer's Path, The - Tanya Reilly.epub: no ISBN — held for confirmation
+/Reinertsen, Donald G_/Principles of Product Development Flow_ Second Generation Lean Product Development, The - Donald G. Reinertsen.epub: no ISBN — held for confirmation
+/Richardson, Chris/Microservices Patterns MEAP V07 - Chris Richardson.epub: no ISBN — held for confirmation
+/Robin, Vicki & Dominguez, Joe/Your Money or Your Life_ 9 Steps to Transforming Your Relationssed and Updated for 2018 - Sample - Vicki Robin & Joe Dominguez.epub: no ISBN — held for confirmation
+/Rumelt, Richard/Good Strategy Bad Strategy - Richard Rumelt.epub: no ISBN — held for confirmation
+/Samit Basu - The Jinn-Bot of Shantiport.epub: no ISBN — held for confirmation
+/Sarna, Piotr/Writing_for_Developers - Piotr Sarna.epub: no ISBN — held for confirmation
+/Schwartz, David J/Magic of Thinking Big, The - David J Schwartz.epub: no ISBN — held for confirmation
+/Scott, Kim/Radical Candor_ Be a Kick-Ass Boss Without Losing Your Humanity - Kim Scott.epub: no ISBN — held for confirmation
+/Shubbuck, Mike & Shubbuck, Tara/Create Your Escape_ A Practical Guide for Planning Long-Term Travel - Mike Shubbuck & Tara Shubbuck.epub: no ISBN — held for confirmation
+/Simmons, Dan/Hyperion - Dan Simmons.epub: matched (readwise 4790035, hardcover 90001 / 30001)
+/Sinclair, Upton/Jungle, The - Upton Sinclair.epub: no ISBN — held for confirmation
+/States, United/United States Constitution, The - United States.epub: no ISBN — held for confirmation
+/Stopford, Ben/Designing Event-Driven Systems - Ben Stopford.epub: no ISBN — held for confirmation
+/Thoreau, Henry David/Civil Disobedience - Henry David Thoreau.epub: no ISBN — held for confirmation
+/Thoreau, Henry David/Walden - Henry David Thoreau.epub: no ISBN — held for confirmation
+/Tolstoy, Leo/Anna Karenina - Leo Tolstoy.epub: no ISBN — held for confirmation
+/Tolstoy, Leo/War and Peace_ With bonus material from Give War and Peace A Chance by Andrew D. Kaufman - Leo Tolstoy.epub: no ISBN — held for confirmation
+/Unknown/DDD_Quickly - Unknown.epub: no ISBN — held for confirmation
+/Unknown/My Clippings - Unknown.epub: no ISBN — held for confirmation
+/Unknown/scanner_5636_038-juno_1306_icewine_wario-373199_crash_Apr_09_19.16.56_2025 - Unknown.epub: no ISBN — held for confirmation
+/Vinge, Vernor/After the Battle on Starship Hill_ Prologue to The Children of the Sky (Zones of Thought series Book 4) - Vernor Vinge.epub: no ISBN — held for confirmation
+/Vinge, Vernor/Children of the Sky (Zones of Thought series Book 3), The - Vernor Vinge.epub: no ISBN — held for confirmation
+/Vinge, Vernor/Deepness in the Sky (Zones of Thought series Book 2), A - Vernor Vinge.epub: no ISBN — held for confirmation
+/Vinge, Vernor/Fire Upon The Deep (Zones of Thought series Book 1), A - Vernor Vinge.epub: no ISBN — held for confirmation
+/Walker, Matthew/Why We Sleep_ Unlocking the Power of Sleep and Dreams - Matthew Walker.epub: no ISBN — held for confirmation
+/Watkins, Michael/First 90 Days, Updated and Expanded_ Proven Strategies for Getting Up to Speed Faster and Smarter, The - Michael Watkins.epub: matched (readwise 4790045, hardcover 90012 / 30012)
+/Weinberg, Gerald/Becoming a Technical Leader - Gerald Weinberg.epub: no ISBN — held for confirmation
+/Weir, Andy/Martian_ A Novel, The - Andy Weir.epub: no ISBN — held for confirmation
+/Xu, Alex/System Design Interview - An insider's guide - Alex Xu.epub: no ISBN — held for confirmation
+/Yi, Esther/Y_N - Esther Yi.epub: matched (readwise 4790046, hardcover 90013 / 30013)
+/asmartbear.com/Avoiding the trap of low-knowledge, high-confidence theories - asmartbear.com.epub: no ISBN — held for confirmation
+/mipsytipsy/Engineer_Manager Pendulum, The - mipsytipsy.epub: no ISBN — held for confirmation
+/okdork.com/Time Management Tips of Insanely Busy People - okdork.com.epub: no ISBN — held for confirmation
+/pushtrain.club/Push Train, The - pushtrain.club.epub: no ISBN — held for confirmation
+/qntm - There Is No Antimemetics Division_ A Novel.epub: matched (readwise 4790047, hardcover 90014 / 30014)
+
+15 matched, 85 left for confirmation, 0 failed
+
+the review page lists these: /review on the relay
+

@@ -1,0 +1,35 @@
+# Confirming one queued book, once — readback either side of the POST
+# document 6bed0a617f1f9106e28c8cfcd0091e94 (Ask For It), no ISBN in the OPF
+
+before:
+  document                 '6bed0a617f1f9106e28c8cfcd0091e94'
+  hash_method              'content'
+  book_path                '/Babcock, Linda & Laschever, Sara/Ask For It - Linda Babcock & Sara Laschever.epub'
+  title                    'Ask For It'
+  author                   'Linda Babcock'
+  isbn                     None
+  readwise_id              None
+  hardcover_id             None
+  hardcover_edition_id     None
+  status                   'unmatched'
+  error                    None
+  first_seen_at            1
+  updated_at               1
+
+after:
+  document                 '6bed0a617f1f9106e28c8cfcd0091e94'
+  hash_method              'content'
+  book_path                '/Babcock, Linda & Laschever, Sara/Ask For It - Linda Babcock & Sara Laschever.epub'
+  title                    'Ask For It'
+  author                   'Linda Babcock'
+  isbn                     None
+  readwise_id              '4790048'
+  hardcover_id             '4471'
+  hardcover_edition_id     '8123'
+  status                   'confirmed'
+  error                    None
+  first_seen_at            1
+  updated_at               1793572159
+
+# The Readwise id in `after` was issued by the double, matched on
+# title + author, which is the identity its own API documents.

@@ -14,6 +14,9 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
+from .hardcover import HARDCOVER_ENDPOINT
+from .readwise import READWISE_BASE_URL
+
 PREFIX = "PAGEWIRE_"
 
 
@@ -73,6 +76,12 @@ class Settings:
     hardcover_enabled: bool = False
     hardcover_token: str = ""
 
+    # Where each service lives, so a deployment can point the relay at a proxy or a
+    # staging endpoint, and a test can point it at a server it controls.
+    readwise_base_url: str = READWISE_BASE_URL
+    hardcover_endpoint: str = HARDCOVER_ENDPOINT
+    service_timeout_seconds: float = 30.0
+
     # What a delivered session says about the device that produced it.
     device_type: str = "E-Reader"
     device_vendor: str = "Xteink"
@@ -108,6 +117,11 @@ class Settings:
             readwise_token=_str(env, "READWISE_TOKEN"),
             hardcover_enabled=_flag(env, "HARDCOVER_ENABLED"),
             hardcover_token=_str(env, "HARDCOVER_TOKEN"),
+            readwise_base_url=_str(env, "READWISE_BASE_URL", cls.readwise_base_url),
+            hardcover_endpoint=_str(env, "HARDCOVER_ENDPOINT", cls.hardcover_endpoint),
+            service_timeout_seconds=_float(
+                env, "SERVICE_TIMEOUT_SECONDS", cls.service_timeout_seconds
+            ),
             device_type=_str(env, "DEVICE_TYPE", cls.device_type),
             device_vendor=_str(env, "DEVICE_VENDOR", cls.device_vendor),
             device_model=_str(env, "DEVICE_MODEL", cls.device_model),
