@@ -118,10 +118,28 @@ below is from the `develop` branch.
   wrong. This matters beyond the spike: a `started_at` cannot be manufactured for a
   sitting the device refuses to date.
 - `end_percent` did **not** substitute on `reader.exit` in this build, while `percent`
-  did. The develop docs list both as `reader.exit` variables, so this is a divergence
-  between the documentation and the rc build (or a variable populated only in some
-  states). Finish detection must not be built on `end_percent` until that is resolved;
-  `reader.session`'s `end_progress_bp` is the alternative once sessions flow.
+  did — consistently, across four events and three boots. The develop docs list both as
+  `reader.exit` variables, so this is a divergence between the documentation and the rc
+  build (or a variable populated only in some states). Finish detection must not be built
+  on `end_percent` until that is resolved; `reader.session`'s `end_progress_bp` is the
+  alternative once sessions flow.
+- **Observed: queued events drain on a WiFi connection, not only at sleep.** Owner's
+  note on the second run: "the sync happened after connecting to wifi, not on sleep".
+  This matches the documented drain points (any WiFi connect, the File Transfer server
+  coming up, or the way into sleep), and it is good news for the design: delivery is
+  prompt and does not depend on the 10-second sleep-entry window in the common case. It
+  also means **device delivery timing is decoupled from session finalisation** — the
+  device may hand over a session the moment it is online, and the relay still holds it
+  until the stitch window elapses, so prompt delivery cannot create a premature sitting.
+  The sleep-entry drain remains the fallback for a reader that never otherwise joins.
+- **`ts` is a per-boot counter, not a wall clock, and the docs are wrong about the value
+  when the clock is unset.** Four captures across three boots: 61 and 139 on one boot,
+  1268 on the next, 42 on the third. It rises within a boot and resets at reboot, which
+  is seconds-since-boot. The docs promise `0` ("0 if the clock was never set"), and a
+  small plausible-looking number is worse than a zero here, because treating `ts` as an
+  epoch would write a 1970 date rather than fail loudly. **The relay must never derive a
+  time from `ts`**; the only usable timestamp is `reader.session`'s `start_time`, which
+  the same docs describe as requiring a trustworthy clock.
 - Delivery is at-least-once, in order per plugin, stopping at the first failure. Each
   queued line has a unique `id` (`{event.id}`) for dedupe.
 - Limits: outbox 4KB per plugin (dropped wholesale when full), one event line 512B,

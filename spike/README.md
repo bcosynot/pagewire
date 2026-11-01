@@ -114,11 +114,19 @@ a step filled in from expectation rather than observation is worse than a blank 
 
 Recorded here because they are the point of the spike, and two of them are surprises.
 
-**Events do arrive, and the ids are the documented ones.** Two events landed minutes
-after the plugin was installed, with ids `09588be3-1` and `09588be3-2` — the per-boot
-nonce plus a counter, which is exactly the dedupe key the design relies on.
+**Events do arrive, and the ids are the documented ones.** Four events so far, across
+three boots — ids `09588be3-1`, `09588be3-2`, `e500489e-1`, `98fd9b01-1`. The nonce
+changes per boot and the counter restarts, which is exactly the dedupe key the design
+relies on, and it means the relay must treat a repeated `id` after a reboot as a new
+event only if the nonce differs.
 
-**Both were `reader.exit`, and neither was followed by a `reader.session`.** That second
+**They drained on a WiFi connection, not at sleep.** Owner's observation: "the sync
+happened after connecting to wifi, not on sleep". That matches the documented drain
+points and is good news — delivery does not depend on the 10-second sleep-entry window
+in the common case, and the relay's own stitch window is what decides when a sitting is
+final, so prompt delivery cannot create a premature one.
+
+**All four were `reader.exit`, and none was followed by a `reader.session`.** That second
 event is the one carrying the start position, end position, duration and progress — the
 only reason to bind the first. Nothing needed to be read into it: an earlier version of
 `listener.py` printed only the keys it expected, which hid the `event` field, so the
@@ -128,7 +136,16 @@ receives and marks unsubstituted placeholders inline.
 **`end_percent` arrived unsubstituted** — the literal text `{event.end_percent}` — while
 `percent` on the same event substituted fine (16, then 2).
 
-**`ts` was 61 and 139.** Not Unix epochs. Probably seconds since boot.
+**`ts` is a per-boot counter.** 61 and 139 on the first boot, 1268 on the second, 42 on
+the third: it rises within a boot and resets at reboot, so it is seconds since boot. The
+docs promise `0` when the clock was never set, so this value is a doc divergence and a
+trap — it looks like a plausible timestamp, and reading it as an epoch would date a
+sitting to 1970 rather than failing. The relay must never derive a time from `ts`.
+
+**No `reader.session` in any of the four captures.** Every event has been `reader.exit`,
+and `sleep.enter` has never appeared — so either the card still carries the pre-`sleep.enter`
+manifest, or sleep has not been used as the way out of the book. Both are worth ruling
+out rather than assuming.
 
 Working hypothesis for the missing session summary: the docs require "at least 10 active
 seconds **and a trustworthy positive start time**", and the device had never had a WiFi
@@ -139,19 +156,24 @@ never been set, and Readwise wants `started_at`.
 
 ## Next run (the one that settles it)
 
-1. Let the reader join WiFi **once**, so SNTP can set the clock. Any sync or File
-   Transfer session does it.
-2. Read a book for a couple of minutes with real forward page turns, WiFi back off.
-3. Press **sleep** while still inside the book. Not "back to home": sleep is the path the
-   docs say flushes the summary through the pre-sleep hook.
-4. `cat spike/events.jsonl` and compare with the transcripts above. A `reader.session`
-   with a real epoch `start_time` means the hypothesis holds and the design stands. No
-   session, with a set clock, means the summary has a different trigger on this build and
-   the device-side design needs revisiting.
+The WiFi join has already happened — that is what triggered the last sync — so SNTP has
+had its chance and the clock should now be set. That makes the next capture the real
+test, and it needs no special setup:
 
-Expect the first sleep after the WiFi join to deliver a session stamped with the *old*
-untrusted time, since the queued event was written before the clock moved. The second
-reading is the clean one.
+1. Read a book for a couple of minutes, with real forward page turns.
+2. Leave the book by pressing **sleep while still inside it**, not Back/Home. Sleep is
+   the path the docs say flushes the summary through the pre-sleep hook; the teardown
+   fallback has not been observed to fire on this build.
+3. `cat spike/events.jsonl` and compare. Three outcomes, each meaning something different:
+   * **a `reader.session` with a `ts` that is a real epoch** — the hypothesis holds, the
+     clock is now the only prerequisite, and the design stands as written;
+   * **`reader.session` with a small `ts` again** — sessions flow but the clock is still
+     untrusted, so the times inside it need checking against `start_time`, not `ts`;
+   * **no `reader.session` at all, from a sleep** — the trigger on this build differs from
+     the docs, and the device half of the design needs revisiting before any relay code.
+
+Also confirm `sleep.enter` appears. It is bound in the current `device.json`, so its
+absence means the card still has the older manifest.
 
 ## What the results change
 

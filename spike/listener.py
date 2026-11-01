@@ -34,6 +34,11 @@ from document_id import content_document_id, filename_document_id  # noqa: E402
 
 CAPTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "events.jsonl")
 
+# Tallies per event name, so a run can be judged at a glance. The whole project hangs on
+# `reader.session`, and it is easy to read a stream of `reader.exit` lines as progress
+# when the event that matters has never once arrived.
+SEEN: dict[str, int] = {}
+
 
 PLACEHOLDER = "{event."
 
@@ -132,10 +137,19 @@ def make_handler(token: str, book_path: str | None):
             with open(CAPTURE, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
+            name = str(payload.get("event", "(no event field)"))
+            SEEN[name] = SEEN.get(name, 0) + 1
+
             print(describe(payload))
             if book_path:
                 print(verify_hash(payload, book_path))
             print(f"  appended to {CAPTURE}")
+            print("  seen in this run: "
+                  + ", ".join(f"{k}={v}" for k, v in sorted(SEEN.items())))
+            if SEEN.get("reader.session", 0) == 0:
+                print("  -> no reader.session yet. That is the event carrying start/end "
+                      "times and progress; the spike has not proven the design until one "
+                      "arrives. Press sleep from INSIDE the book.")
             self._reply(200, b'{"ok":true}')
 
         def log_message(self, *args):  # silence the default per-request noise
@@ -166,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"capture file           {CAPTURE}")
     if args.book:
         print(f"verifying hashes against {args.book}")
-    print("waiting for the first event. leave this running, then read and press sleep.")
+    print("waiting for the first event.")
+    print("  press SLEEP while still inside the book — leaving the book via Back/Home is a")
+    print("  different path, and on this build it has only ever produced reader.exit.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
