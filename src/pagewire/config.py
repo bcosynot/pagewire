@@ -53,6 +53,10 @@ class Settings:
     # Vivek's ruling, 2026-10-31: "short gaps are pauses, long pauses end sittings".
     stitch_window_seconds: int = 30 * 60
 
+    # Readwise refuses a session whose `ended_at` is more than 24 hours after its
+    # `started_at`, so a longer continuous span is split into sittings at that cap.
+    max_span_seconds: int = 24 * 60 * 60
+
     # The two destinations, independently switchable, each with its own credential.
     readwise_enabled: bool = False
     readwise_token: str = ""
@@ -84,6 +88,7 @@ class Settings:
             db_path=_str(env, "DB", cls.db_path),
             device_token=_str(env, "TOKEN"),
             stitch_window_seconds=_int(env, "STITCH_WINDOW_SECONDS", cls.stitch_window_seconds),
+            max_span_seconds=_int(env, "MAX_SPAN_SECONDS", cls.max_span_seconds),
             readwise_enabled=_flag(env, "READWISE_ENABLED"),
             readwise_token=_str(env, "READWISE_TOKEN"),
             hardcover_enabled=_flag(env, "HARDCOVER_ENABLED"),

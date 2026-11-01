@@ -16,7 +16,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 SCHEMA = """
 -- Raw events, exactly as they arrived. Kept even after they are turned into sittings, so
@@ -157,6 +157,50 @@ class Storage:
     def events(self) -> list[sqlite3.Row]:
         with self._connect() as connection:
             return list(connection.execute("SELECT * FROM raw_events ORDER BY received_at, id"))
+
+    def sittings(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM derived_sessions ORDER BY document, started_at"
+                )
+            )
+
+    def replace_sittings(self, sittings: Iterable[Any]) -> None:
+        """Replace the whole derived set with `sittings`, in one transaction.
+
+        Derived sessions are a function of the raw events, which are kept forever, so the
+        table is a cache and is rewritten rather than appended to. That is what makes a
+        replay idempotent: deriving twice cannot produce a second row for the same
+        reading, and a rule change re-derives history instead of leaving stale rows behind.
+        """
+        updated_at = int(time.time())
+        rows = [
+            (
+                sitting.document,
+                sitting.started_at,
+                sitting.ended_at,
+                sitting.active_seconds,
+                sitting.paused_seconds,
+                sitting.start_progress_bp,
+                sitting.end_progress_bp,
+                int(sitting.finalised),
+                json.dumps(list(sitting.event_ids)),
+                updated_at,
+            )
+            for sitting in sittings
+        ]
+        with self._connect() as connection:
+            connection.execute("DELETE FROM derived_sessions")
+            connection.executemany(
+                """
+                INSERT INTO derived_sessions
+                    (document, started_at, ended_at, active_seconds, paused_seconds,
+                     start_progress_bp, end_progress_bp, finalised, event_ids, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
 
 
 def _text(value: Any) -> str | None:
