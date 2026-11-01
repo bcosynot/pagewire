@@ -1,0 +1,15 @@
+# Criterion 1 evidence — the device's own status endpoint
+# Captured 2026-11-01T20:28:32Z from the Xteink X4 in File Transfer mode.
+#
+# Request:
+#   GET http://192.168.0.217/api/status
+# Response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 419
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: *
+Access-Control-Allow-Headers: *
+Connection: close
+
+{"version":"2.0.0","firmwareFamily":"crosspoint","pluginApi":1,"pluginCapabilities":"catalog.lists,catalog.notices,catalog.bundle_install,catalog.version_tracking,catalog.compatibility,catalog.item_details,catalog.encoded_item_fields,catalog.list_index_mapping,catalog.list_requirements,catalog.server_paths","ip":"192.168.0.217","mode":"STA","rssi":-54,"freeHeap":68540,"uptime":123,"device":"X4","serial":"Not found"}

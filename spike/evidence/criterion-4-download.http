@@ -1,0 +1,17 @@
+# Criterion 4 evidence (2 of 2) — an EPUB over GET /download, no credentials sent
+#
+# Request:
+#   GET http://192.168.0.217/download?path=%2FSamit%20Basu%20-%20The%20Jinn-Bot%20of%20Shantiport.epub
+# Response headers:
+HTTP/1.1 200 OK
+Content-Type: application/epub+zip
+Content-Disposition: attachment; filename="Samit Basu - The Jinn-Bot of Shantiport.epub"
+Content-Length: 964964
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: *
+Access-Control-Allow-Headers: *
+Connection: close
+
+# Body: 964964 bytes written to disk (spike/downloads/ is gitignored; the EPUB
+# itself is not committed). sha256 of the received body:
+#   d35e6eb05ea735bc464f293241d29cf36886e6b5b076ada3ee84b2ba3865b80f

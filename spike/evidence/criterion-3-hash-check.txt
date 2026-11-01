@@ -1,0 +1,23 @@
+# Criterion 3 evidence — re-checked against a FRESH download, 2026-11-01
+#
+# The device reported this book's document id in the captured reader.session:
+#   document = 8f49706e45186c3185a9a7fcbcabe6f5
+# Reproduce it from the file fetched over GET /download in this session:
+
+$ python spike/document_id.py 'spike/downloads/Samit Basu - The Jinn-Bot of Shantiport.epub' --document 8f49706e45186c3185a9a7fcbcabe6f5
+file     : spike/downloads/Samit Basu - The Jinn-Bot of Shantiport.epub
+size     : 964964 bytes
+content  : 8f49706e45186c3185a9a7fcbcabe6f5
+filename : 191d894ee1ecba7df3eec0c3a034460f
+offsets  : 0, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824
+verdict  : MATCH (content method) — the identity key can be computed locally
+
+# Same bytes under a different basename — the filename method re-keys the book,
+# which is why the device's method setting is recorded rather than assumed:
+
+$ python spike/document_id.py spike/downloads/book.epub
+file     : spike/downloads/book.epub
+size     : 964964 bytes
+content  : 8f49706e45186c3185a9a7fcbcabe6f5
+filename : 03053ffc045564439ff7f2cabb3b58c5
+offsets  : 0, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824

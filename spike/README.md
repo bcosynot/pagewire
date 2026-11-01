@@ -10,8 +10,10 @@ It exists to answer two questions with real hardware that the design currently a
 
 Everything here is written from Crosspoint's `develop`-branch documentation
 (`docs/plugin-events.md`, `docs/sd-plugins.md`, `docs/webserver-endpoints.md`) and from
-its `lib/KOReaderSync/KOReaderDocumentId.cpp`. The installed firmware is v1.5.0, which
-has none of it, so the plugin system is step one.
+its `lib/KOReaderSync/KOReaderDocumentId.cpp`. The firmware installed when this kit was
+written (v1.5.0) had none of it, so the plugin system was step one; **the device now
+reports `version 2.0.0` with `pluginApi 1`** (`evidence/criterion-1-status.http`,
+2026-11-01), so that flash is done.
 
 ## Kit
 
@@ -26,10 +28,18 @@ has none of it, so the plugin system is step one.
 Every step is marked **NOT YET RUN**. Tick each one off and record the observed value;
 a step filled in from expectation rather than observation is worse than a blank one.
 
+**Status 2026-11-01.** Steps 1-7, 9 and 10 were executed on 2026-10-31 and their observed
+values live in *Findings so far* below; those checkboxes were never ticked, so read that
+section rather than the boxes. Steps 0 and 8 are now filled in and criteria 1 and 4 are
+closed, with the raw captures in `evidence/`.
+
 - [ ] **NOT YET RUN — 0. Preconditions.** Firmware v2.0.0rc (or newer) is flashed. This
       machine's LAN address is known. Record the exact firmware build string:
 
-      build: ____________________
+      build: 2.0.0   (firmwareFamily `crosspoint`, pluginApi 1, device `X4`) - observed
+      2026-11-01 via `GET /api/status`; see `evidence/criterion-1-status.http`. The device
+      reports no serial (`"serial": "Not found"`), so identity keys on the content hash
+      alone, as the design already assumes.
 
 - [ ] **NOT YET RUN — 1. Enable plugins on the device.** Settings → Connectivity →
       Plugins → Enabled. It is **Disabled by default** on new installs, and without it
@@ -97,7 +107,12 @@ a step filled in from expectation rather than observation is worse than a blank 
       cannot be reproduced yet and the identity design needs revisiting before anything
       is built on it.
 
-      verdict: ______________________
+      verdict: **MATCH, content method** - `8f49706e45186c3185a9a7fcbcabe6f5` reproduced
+      exactly from a fresh `GET /download` on 2026-11-01; see
+      `evidence/criterion-3-hash-check.txt`. The filename method gave
+      `191d894ee1ecba7df3eec0c3a034460f`, so the device is on the content method. The same
+      bytes named `book.epub` hash to `03053ffc045564439ff7f2cabb3b58c5` under the filename
+      method - a rename re-keys the book, which is why the method is recorded.
 
 - [ ] **NOT YET RUN — 9. Record which document-id method is in play.** The firmware has
       two (a content hash and a plain hash of the filename) and picks one per device
@@ -204,14 +219,14 @@ test, and it needs no special setup:
 Also confirm `sleep.enter` appears. It is bound in the current `device.json`, so its
 absence means the card still has the older manifest.
 
-## Criteria status (2026-10-31)
+## Criteria status (updated 2026-11-01)
 
 | # | Criterion | Status |
 |---|---|---|
-| 1 | Firmware advertises the plugin system; build string recorded | **Open** — plugin system confirmed present and working; the exact build string has not been written down |
+| 1 | Firmware advertises the plugin system; build string recorded | **Met** — plugin system present (`/plugins` serves 200, `/api/status` reports `pluginApi 1` with a capability list); build string recorded as **2.0.0** (`evidence/criterion-1-status.http`) |
 | 2 | A `reader.session` reaches a listener over the LAN | **Met** — full session captured, fixture in `spike/events.jsonl` line 10 (and pasted in the findings above) |
-| 3 | The device's `document` equals a locally computed hash | **Met** — MATCH on the content method: device `8f49706e45186c3185a9a7fcbcabe6f5` = locally computed, over a 964,964-byte EPUB. The filename method gave `191d894ee1ecba7df3eec0c3a034460f`, so the device is on the content method |
-| 4 | `GET /api/files` and `GET /download` work without credentials | **Partial** — the book was fetched, but the HTTP transcripts were not recorded |
+| 3 | The device's `document` equals a locally computed hash | **Met** — MATCH on the content method: device `8f49706e45186c3185a9a7fcbcabe6f5` = locally computed, over a 964,964-byte EPUB, re-proved 2026-11-01 against a fresh `GET /download` (`evidence/criterion-3-hash-check.txt`). The filename method gave `191d894ee1ecba7df3eec0c3a034460f`, so the device is on the content method |
+| 4 | `GET /api/files` and `GET /download` work without credentials | **Met** — both transcripts recorded 2026-11-01 with no credentials sent: `GET /api/files?path=/` -> 200 JSON card listing, `GET /download?path=...` -> 200 `application/epub+zip` (`evidence/criterion-4-files.http`, `evidence/criterion-4-download.http`) |
 | 5 | Delivery behaviour with WiFi otherwise off | **Observed, with a correction** — delivery drains on a WiFi connection rather than at sleep (owner's note); sleep entry also drained, since queued events flushed there. The 10-second sleep-window path specifically was not isolated, and no longer matters much |
 
 The three findings that changed the design: sessions are gated on a set clock; idle time
