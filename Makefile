@@ -3,11 +3,12 @@
 
 PORT ?= 8799
 BOOK ?=
+DEST ?=
 TOKEN_FILE := spike/plugin/token.json
 VENV := .venv
 
 .DEFAULT_GOAL := help
-.PHONY: help spike ip token test venv clean
+.PHONY: help spike ip sd token test venv clean
 
 help: ## Show this list
 	@echo "targets:"
@@ -54,6 +55,24 @@ spike: $(TOKEN_FILE) ## Run the capture listener and print the address it is rea
 	fi; \
 	echo ""; \
 	exec python3 spike/listener.py --host 0.0.0.0 --port $(PORT) --token "$$token" $(if $(BOOK),--book $(BOOK))
+
+sd: $(TOKEN_FILE) ## Copy the plugin folder onto a mounted SD card (DEST=/path/to/card)
+	@if [ -z "$(DEST)" ]; then \
+		echo "usage: make sd DEST=/path/to/card" >&2; \
+		echo "  the mounted card root, e.g. /Volumes/CROSSPOINT or /run/media/\$$USER/CROSSPOINT" >&2; \
+		exit 2; \
+	fi
+	@if [ ! -d "$(DEST)" ]; then echo "no such directory: $(DEST)" >&2; exit 2; fi
+	@ip=$$(ip route get 1.1.1.1 2>/dev/null | awk '{print $$7; exit}'); \
+	if [ -z "$$ip" ]; then ip=$$(hostname -I 2>/dev/null | awk '{print $$1}'); fi; \
+	if [ -z "$$ip" ]; then echo "warning: no LAN address found; fix config.json on the card by hand" >&2; ip=CHANGE_ME; fi; \
+	mkdir -p "$(DEST)/plugins/pagewire"; \
+	cp spike/plugin/manifest.json spike/plugin/device.json spike/plugin/README.md "$(DEST)/plugins/pagewire/"; \
+	cp $(TOKEN_FILE) "$(DEST)/plugins/pagewire/token.json"; \
+	printf '{"server": "http://%s:%s"}\n' "$$ip" "$(PORT)" > "$(DEST)/plugins/pagewire/config.json"; \
+	echo "staged:"; ls -1 "$(DEST)/plugins/pagewire" | sed 's/^/  /'; \
+	echo; echo "server set to http://$$ip:$(PORT)"; \
+	echo "the token on the card is the same one 'make spike' will use"
 
 venv: ## Create .venv and install the package with its dev extras
 	python3 -m venv $(VENV)

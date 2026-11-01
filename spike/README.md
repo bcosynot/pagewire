@@ -35,11 +35,19 @@ a step filled in from expectation rather than observation is worse than a blank 
       Plugins → Enabled. It is **Disabled by default** on new installs, and without it
       the folder is invisible no matter how correct the manifest is.
 
-- [ ] **NOT YET RUN — 2. Install the plugin.** Copy `spike/plugin/` to the SD card at
-      `/.crosspoint/plugins/pagewire/`, create `token.json` from `token.json.example`,
-      and set the server address in `config.json` to this machine on the LAN.
+- [ ] **NOT YET RUN — 2. Install the plugin.** Mount the card, then from the repo root:
 
-      server: ______________________
+      ```sh
+      make sd DEST=/path/to/card     # or wherever the card mounted
+      ```
+
+      That writes `plugins/pagewire/` on the card with the manifest, the three files the
+      device reads, and a `config.json` containing this host's LAN address. The firmware
+      scans `/plugins`, `/.plugins` and `/.crosspoint/plugins`; `/plugins` is used here
+      because it needs no dotfile handling on a desktop. The folder name must stay
+      `pagewire` — the firmware caps plugin folder names at 23 bytes.
+
+      server it wrote: ______________________
 
 - [ ] **NOT YET RUN — 3. Start the listener.** From the repo root:
 

@@ -57,8 +57,14 @@ Equivalent by hand: `python -m venv .venv && . .venv/bin/activate`, then
 ```sh
 make spike                      # capture listener, prints the LAN address to use
 make spike BOOK=/tmp/book.epub  # ...and also check the document hash against a file
+make sd DEST=/media/card        # stage the plugin folder onto a mounted SD card
 make ip                         # just the LAN address
 ```
+
+`make sd` writes `DEST/plugins/pagewire/` with `manifest.json`, `device.json`,
+`README.md`, `token.json`, and a `config.json` holding this host's LAN address — so the
+card is ready to put back in the device. Then enable the plugin subsystem on the device
+(Settings → Connectivity → Plugins → Enabled, **off by default**) and reboot it.
 
 `make spike` creates a local `spike/plugin/token.json` if there isn't one, then prints
 the exact `config.json` and `token.json` contents to put on the SD card, and the URL the
