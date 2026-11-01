@@ -1,9 +1,36 @@
 # Pagewire — design
 
 Date: 2026-10-31
-Status: awaiting approval
+Status: approved 2026-10-31 — see **Corrections (2026-11-01)** below
 Author: Garu (with Vivek Ranjan)
 Owner: Vivek Ranjan
+
+## Corrections (2026-11-01)
+
+This document is the design of record as approved on 2026-10-31. The sections below are
+left as written, so the reasoning behind each decision survives; three claims in them have
+since been overtaken by the hardware and are corrected here rather than edited in place.
+The evidence is committed in the repo — `spike/evidence/` for the spike,
+`docs/evidence/per-42-sweep/` for the sweep.
+
+1. **The installed firmware is not v1.5.0 — it is `2.0.0`.** The reader reports its own
+   build at `GET /api/status`: `version 2.0.0`, `firmwareFamily crosspoint`, `pluginApi 1`,
+   device `X4`. The plugin system is therefore present and working, and the "step zero"
+   flash described under *The device* is done. The v1.5.0 and v2.0.0rc figures below were
+   correct when written and no longer describe the device. **Ask the device for its build
+   rather than trusting a version recorded in prose.**
+2. **The "prerelease firmware" risk is closed.** *Open risks* records the device side as
+   resting on a release candidate. The build in use reports a plain `2.0.0`, and the spike
+   exercised the event path, the drain behaviour and the document hash against it.
+3. **The device reports no serial** (`"serial": "Not found"`). Identity keys on the content
+   hash alone — which *Resolve identity* already assumes, so this confirms it rather than
+   changing it.
+
+Two things this document leaves open have since been settled by measurement, and are
+recorded on the Linear children rather than here: the metadata sweep reads 100 books off
+the card and keys each on the device's own `document` (matching exactly), and its "already
+identified" check is keyed on the SD path, because the device's listing carries no hash to
+compare against.
 
 ## Intent
 
@@ -80,6 +107,10 @@ containing it is **v2.0.0rc**, published 2026-10-19, marked prerelease, target
 `develop`. The first milestone of this project is therefore flashing a prerelease
 firmware, and the entire device-side mechanism rests on that build. Everything quoted
 below is from the `develop` branch.
+
+> **Corrected 2026-11-01.** The flash is done: the installed build reports `2.0.0` with
+> the plugin system present. See *Corrections* above. The reasoning here is unchanged —
+> it is what made the flash the first step.
 
 - The firmware emits `reader.session`: "An active-reading summary is flushed before
   sleep/exit". Variables: `book` (SD path), `document` ("binary KOSync partial-MD5,
@@ -589,7 +620,8 @@ the section referenced.
    A, and pause counts only time when no other book was open. (See "Derive and deliver
    sessions".)
 2. **Installed firmware is v1.5.0 — it has no plugin system.** A firmware flash is step
-   zero. (See "The device".)
+   zero. (See "The device".) **Corrected 2026-11-01: the flash is done — the device now
+   reports `2.0.0` with the plugin system present.**
 3. **Nothing else writes to Hardcover today** except the sync button; the earlier
    forwarding attempt never landed as running code. (See "The existing path on the LXC".)
 4. **Auto-add on confident matches only** (ISBN); hold ambiguous ones for one
@@ -610,7 +642,9 @@ implementation, configuration file format, logging, packaging layout, tests.
 - **The device side depends on a prerelease firmware.** v2.0.0rc is the only published
   build with the plugin system. The event names are documented as a compatibility promise
   ("semantic, never internal activity names"), which limits the blast radius, but the
-  installed firmware is still a release candidate.
+  installed firmware is still a release candidate. **Corrected 2026-11-01: this risk is
+  closed — the installed build reports a plain `2.0.0`, and the spike exercised the device
+  side against it.**
 - The box cannot be deployed to from this environment yet: `~/.ssh/base_server_lxc` (the
   key AGENTS.md names) is absent here, and the running LXC is on an older revision than
   `flake.nix`, so a redeploy is needed before any relay module takes effect.
