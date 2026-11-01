@@ -87,15 +87,23 @@ class Storage:
 
     def __init__(self, path: str) -> None:
         self.path = path
-        if path != ":memory:":
+        # An in-memory database lives and dies with its connection, so one has to be kept
+        # for the lifetime of this object. Without it every `_connect()` opens a fresh
+        # empty database, the schema created by `_init` is invisible to the next call, and
+        # reads come back empty — which reads as "nothing was stored" rather than as an
+        # error. Files do not have this problem: they are shared by path.
+        self._memory: sqlite3.Connection | None = None
+        if path == ":memory:":
+            self._memory = sqlite3.connect(":memory:")
+        else:
             Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=10)
+        connection = self._memory or sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         # WAL keeps a reader (the review page) from blocking the ingest path.
-        if self.path != ":memory:":
+        if self._memory is None:
             connection.execute("PRAGMA journal_mode=WAL")
         return connection
 
