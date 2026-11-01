@@ -35,31 +35,47 @@ from document_id import content_document_id, filename_document_id  # noqa: E402
 CAPTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "events.jsonl")
 
 
+PLACEHOLDER = "{event."
+
+
 def describe(payload: dict) -> str:
+    """Print the payload as it arrived, and flag anything that arrived unsubstituted.
+
+    Deliberately does NOT print a fixed list of keys: the first real capture was read
+    through an earlier version of this function that only showed the keys it expected,
+    and an `event` key of `reader.exit` went unseen because of it.
+    """
     lines = ["", "event received -------------------------------------------------"]
-    for key in (
-        "id",
-        "ts",
-        "book",
-        "document",
-        "start_time",
-        "end_time",
-        "duration_seconds",
-        "start_progress_bp",
-        "end_progress_bp",
-        "progress_scale",
-    ):
-        if key in payload:
-            lines.append(f"  {key:18} {payload[key]}")
+    for key in sorted(payload):
+        value = payload[key]
+        flag = "  <-- NOT SUBSTITUTED (the firmware had no value for this)" \
+            if isinstance(value, str) and PLACEHOLDER in value else ""
+        lines.append(f"  {key:20} {value}{flag}")
+
+    missing = [k for k, v in payload.items()
+               if isinstance(v, str) and PLACEHOLDER in v]
+    if missing:
+        lines.append(f"  note: {len(missing)} variable(s) came through as literal placeholders: "
+                     + ", ".join(sorted(missing)))
+
+    ts = payload.get("ts")
     try:
-        start = int(payload["start_time"])
-        end = int(payload["end_time"])
-        duration = int(payload["duration_seconds"])
-        span = end - start
-        lines.append(f"  {'active seconds':18} {duration} (span {span}s, "
-                     f"{'consistent' if span == duration else 'MISMATCH vs span'})")
-    except (KeyError, ValueError, TypeError):
-        lines.append("  (could not parse the times — capture it and move on)")
+        if ts is not None and int(ts) < 1_000_000_000:
+            lines.append(f"  note: ts={ts} is not a wall clock — the device's clock is "
+                         f"probably still unset (no SNTP sync yet)")
+    except (TypeError, ValueError):
+        pass
+
+    if payload.get("event") == "reader.session":
+        try:
+            start = int(payload["start_time"])
+            end = int(payload["end_time"])
+            duration = int(payload["duration_seconds"])
+            span = end - start
+            lines.append(f"  active seconds     {duration} (span {span}s, "
+                         f"{'consistent' if span == duration else 'MISMATCH vs span'})")
+        except (KeyError, ValueError, TypeError):
+            lines.append("  active seconds     (start/end/duration not all present)")
     return "\n".join(lines)
 
 

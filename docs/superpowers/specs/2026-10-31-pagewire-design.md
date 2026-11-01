@@ -105,6 +105,23 @@ below is from the `develop` branch.
 - Timestamps survive late delivery: `lib/TrustedTime` keeps a monotonic floor in NVS,
   restores it at boot, seeds from RTC, and SNTPs on every WiFi join; time never moves
   backwards, and `trustedNow()` returns 0 rather than a wrong time.
+- **Observed on hardware (v2.0.0rc, 2026-10-31): no session summary was emitted at all.**
+  Two real `reader.exit` events were delivered minutes apart, both carrying `percent`
+  (16 and 2) and a `book` SD path, and no `reader.session` event followed either of them.
+  Both carried a literal, unsubstituted `{event.end_percent}`, and `ts` values of 61 and
+  139 — not Unix epochs, plausibly boot-relative. The docs' own emit condition for
+  `reader.session` requires "a trustworthy positive start time", and `TrustedTime` gets
+  one only from a battery-backed RTC or an SNTP sync on a WiFi join, which had never
+  happened on this device. Working hypothesis: **sessions are suppressed until the clock
+  has been set at least once**. UNVERIFIED — the next run joins WiFi once, then reads and
+  sleeps, and either a full summary appears with real epoch times or the hypothesis is
+  wrong. This matters beyond the spike: a `started_at` cannot be manufactured for a
+  sitting the device refuses to date.
+- `end_percent` did **not** substitute on `reader.exit` in this build, while `percent`
+  did. The develop docs list both as `reader.exit` variables, so this is a divergence
+  between the documentation and the rc build (or a variable populated only in some
+  states). Finish detection must not be built on `end_percent` until that is resolved;
+  `reader.session`'s `end_progress_bp` is the alternative once sessions flow.
 - Delivery is at-least-once, in order per plugin, stopping at the first failure. Each
   queued line has a unique `id` (`{event.id}`) for dedupe.
 - Limits: outbox 4KB per plugin (dropped wholesale when full), one event line 512B,

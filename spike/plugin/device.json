@@ -34,6 +34,19 @@
       },
       "connect": true,
       "toast": "Pagewire spike: exit sent"
+    },
+
+    "sleep.enter": {
+      "request": {
+        "method": "POST",
+        "url": "{cfg.server}/events/session",
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"v\":\"1\",\"event\":\"sleep.enter\",\"id\":\"{event.id}\",\"ts\":\"{event.ts}\",\"book\":\"{event.book}\",\"percent\":\"{event.percent}\",\"end_percent\":\"{event.end_percent}\"}"
+      },
+      "toast": "Pagewire spike: sleep sent"
     }
   }
 }

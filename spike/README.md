@@ -110,6 +110,49 @@ a step filled in from expectation rather than observation is worse than a blank 
       predict: a field that was empty, a value that was `0`, a delivery that happened at
       a moment other than sleep, an event that never arrived at all.
 
+## Findings so far (2026-10-31, firmware v2.0.0rc)
+
+Recorded here because they are the point of the spike, and two of them are surprises.
+
+**Events do arrive, and the ids are the documented ones.** Two events landed minutes
+after the plugin was installed, with ids `09588be3-1` and `09588be3-2` — the per-boot
+nonce plus a counter, which is exactly the dedupe key the design relies on.
+
+**Both were `reader.exit`, and neither was followed by a `reader.session`.** That second
+event is the one carrying the start position, end position, duration and progress — the
+only reason to bind the first. Nothing needed to be read into it: an earlier version of
+`listener.py` printed only the keys it expected, which hid the `event` field, so the
+`reader.exit` lines looked like malformed sessions. The listener now prints every key it
+receives and marks unsubstituted placeholders inline.
+
+**`end_percent` arrived unsubstituted** — the literal text `{event.end_percent}` — while
+`percent` on the same event substituted fine (16, then 2).
+
+**`ts` was 61 and 139.** Not Unix epochs. Probably seconds since boot.
+
+Working hypothesis for the missing session summary: the docs require "at least 10 active
+seconds **and a trustworthy positive start time**", and the device had never had a WiFi
+join, so SNTP had never run and there was no trustworthy time to stamp a sitting with.
+If that is right, sessions are suppressed until the clock has been set at least once —
+which would mean the design cannot place a sitting in time on a device whose clock has
+never been set, and Readwise wants `started_at`.
+
+## Next run (the one that settles it)
+
+1. Let the reader join WiFi **once**, so SNTP can set the clock. Any sync or File
+   Transfer session does it.
+2. Read a book for a couple of minutes with real forward page turns, WiFi back off.
+3. Press **sleep** while still inside the book. Not "back to home": sleep is the path the
+   docs say flushes the summary through the pre-sleep hook.
+4. `cat spike/events.jsonl` and compare with the transcripts above. A `reader.session`
+   with a real epoch `start_time` means the hypothesis holds and the design stands. No
+   session, with a set clock, means the summary has a different trigger on this build and
+   the device-side design needs revisiting.
+
+Expect the first sleep after the WiFi join to deliver a session stamped with the *old*
+untrusted time, since the queued event was written before the clock moved. The second
+reading is the clean one.
+
 ## What the results change
 
 - **Event arrives, hash matches** — the design stands as written.
