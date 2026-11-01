@@ -364,6 +364,17 @@ book A, put it down, read B, come back to A — that is **two sittings in A**, a
 that **no session for any other book falls inside the gap**. A gap containing another
 book's reading is a boundary, not a pause, no matter how short it is.
 
+**Open decision — does the pre-flush lump count as pause?** The firmware compacts idle
+gaps out of `duration_seconds`, so the gaps inside a sitting are unrecoverable. The only
+trace is the gap between `end_time` and the event's `ts` (its emission time), which on the
+spike's real session was 32 seconds. Awaiting Vivek's ruling; my proposal is that
+`ended_at` = `end_time` (the last counted page turn, which is what he said the end should
+be) and `paused_seconds` = the pre-flush lump **plus** the stitched inter-session gaps,
+with the 30-minute window deciding each — a gap at or over the window is a boundary, not a
+pause. That makes the window do double duty and keeps a sitting always ending on a page
+turn. One case it mishandles: a book left open with the device sleeping hours later
+produces an hours-long lump, which the window catches by demoting it to a boundary.
+
 Because Readwise cannot amend a session after the fact, nothing is delivered while it is
 still open: a derived session is only eligible once no new constituent event has arrived
 for the stitch window, and a periodic sweep finalises and pushes it.
@@ -488,22 +499,25 @@ Consequences to get right:
   It cannot run during a normal reading session, because the web server is not up then.
 - The sweep must map a downloaded file back to a hash. `GET /api/files` gives names and
   sizes only, no hash, so the relay computes the same KOSync partial-MD5 the device does
-  over the file it downloaded, and keys the row on that. The hash algorithm must be
-  matched exactly to the firmware's — UNVERIFIED until the spike compares a device-sent
-  `document` against a locally computed hash for a known file. **This is the single
-  highest-risk assumption in the design**, because the whole identity table hangs on it.
+  over the file it downloaded, and keys the row on that. **VERIFIED on hardware
+  2026-10-31** — the spike computed it locally for a real book and got the device's exact
+  value: device `document` `8f49706e45186c3185a9a7fcbcabe6f5`, locally computed
+  `8f49706e45186c3185a9a7fcbcabe6f5`, over a 964,964-byte EPUB. The algorithm is
+  `spike/document_id.py` (content method), which lifts into the relay unchanged. This was
+  the single highest-risk assumption in the design, because the whole identity table hangs
+  on it, and it now holds.
 - The relay needs the device's address: `crosspoint.local` (mDNS, may not resolve inside
   the LXC) or the IP shown on the device screen. A tunable.
-- **There are two document-id methods, not one.** Confirmed by reading the firmware
-  (`lib/KOReaderSync/KOReaderDocumentId.cpp`) and independently by crosspoint-sync's
-  protocol doc: the device computes either a partial MD5 over content-sampled bytes, or
-  a plain MD5 of the file's basename, "per device setting". They are different keys for
-  the same book, and crosspoint-sync's own note is that "the server never tries to unify
-  the two hash methods; a book synced under both appears as two documents". So the relay
-  must support both, record which one a row was keyed under, and treat a rename on the
-  card as either harmless (content method) or an identity change (filename method). The
-  spike's kit computes both and reports which one the device is using; the identity
-  table grows a column for it.
+- **There are two document-id methods, not one — and this device is on the content one.**
+  Confirmed by reading the firmware (`lib/KOReaderSync/KOReaderDocumentId.cpp`) and
+  independently by crosspoint-sync's protocol doc: the device computes either a partial
+  MD5 over content-sampled bytes, or a plain MD5 of the file's basename, "per device
+  setting". They are different keys for the same book, and crosspoint-sync's own note is
+  that "the server never tries to unify the two hash methods; a book synced under both
+  appears as two documents". **Verified on hardware:** for one book the device's
+  `document` matched the content method and not the filename method (`191d894e…`), so a
+  rename on the card is currently harmless. The relay still stores which method keyed a
+  row, because the setting can change and a device reset would silently re-key everything.
 
 ## Tunables (exposed, not baked in)
 

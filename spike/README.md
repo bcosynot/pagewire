@@ -204,6 +204,19 @@ test, and it needs no special setup:
 Also confirm `sleep.enter` appears. It is bound in the current `device.json`, so its
 absence means the card still has the older manifest.
 
+## Criteria status (2026-10-31)
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Firmware advertises the plugin system; build string recorded | **Open** — plugin system confirmed present and working; the exact build string has not been written down |
+| 2 | A `reader.session` reaches a listener over the LAN | **Met** — full session captured, fixture in `spike/events.jsonl` line 10 (and pasted in the findings above) |
+| 3 | The device's `document` equals a locally computed hash | **Met** — MATCH on the content method: device `8f49706e45186c3185a9a7fcbcabe6f5` = locally computed, over a 964,964-byte EPUB. The filename method gave `191d894ee1ecba7df3eec0c3a034460f`, so the device is on the content method |
+| 4 | `GET /api/files` and `GET /download` work without credentials | **Partial** — the book was fetched, but the HTTP transcripts were not recorded |
+| 5 | Delivery behaviour with WiFi otherwise off | **Observed, with a correction** — delivery drains on a WiFi connection rather than at sleep (owner's note); sleep entry also drained, since queued events flushed there. The 10-second sleep-window path specifically was not isolated, and no longer matters much |
+
+The three findings that changed the design: sessions are gated on a set clock; idle time
+inside a sitting is only visible as one lump; and a placeholder value must read as absent.
+
 ## What the results change
 
 - **Event arrives, hash matches** — the design stands as written.
