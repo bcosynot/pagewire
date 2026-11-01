@@ -373,7 +373,8 @@ book A, put it down, read B, come back to A — that is **two sittings in A**, a
 that **no session for any other book falls inside the gap**. A gap containing another
 book's reading is a boundary, not a pause, no matter how short it is.
 
-**Open decision — what makes a pause, and where a sitting ends.** The firmware compacts
+**Decided by Vivek 2026-10-31, in his words: "short gaps are pauses, long pauses end
+sittings."** The firmware compacts
 idle gaps out of `duration_seconds`, so the gaps inside a sitting are unrecoverable. The
 only trace of idle time within one sitting is the gap between `end_time` (the last counted
 page turn) and the event's `ts` (its emission time) — 32 seconds on the spike's real
@@ -393,7 +394,7 @@ That leaves two self-consistent readings, and each breaks one of Vivek's two rul
   flushed, not when he stopped turning pages — and if a book is left open and the device
   sleeps an hour later, that hour becomes the session's end.
 
-**Proposal, applying the 30-minute window to each gap rather than only to stitch points:**
+**The rule, applying the 30-minute window to each gap rather than only to stitch points:**
 start with `started_at` = `start_time`. Take the trailing gap `ts − end_time`. If it is
 under the window, treat it as the same kind of thing as a gap between stitched sessions —
 a pause — so `ended_at` = `ts` and `paused_seconds` = trailing gap + stitched gaps. If it
