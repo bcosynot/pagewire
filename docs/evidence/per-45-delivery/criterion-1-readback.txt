@@ -1,0 +1,38 @@
+the sitting the relay derived
+  document:         670108835427962c46d53ea3cc1fd5cf
+  started_at:       1760000000
+  ended_at:         1760004800 (a span of 80 minutes,
+                    of which 20 were the gap between the two firmware sessions)
+  active_seconds:   3600
+  end_progress_bp:  4470 of 10000
+  finalised:        True
+
+the edition it was mapped through
+  hardcover book=328491 edition=990011 pages=448
+
+the arithmetic
+  round(448 x 4470 / 10000) = 200
+
+what Hardcover holds afterwards
+  read 90001: progress_pages=200  action_at=2025-10-09T06:13:20-04:00
+
+what the relay sent
+document:
+mutation UpdateReadProgress($id: Int!, $pages: Int, $actionAt: String) {
+  update_user_book_read(id: $id, object: {
+    progress_pages: $pages,
+    action_at: $actionAt
+  }) {
+    error
+    user_book_read {
+      id
+      progress_pages
+      started_at
+      finished_at
+    }
+  }
+}
+
+variables: {"actionAt": "2025-10-09T06:13:20-04:00", "id": 90001, "pages": 200}
+
+delivered: [('670108835427962c46d53ea3cc1fd5cf', 1760000000)], coalesced: []

@@ -1,0 +1,13 @@
+sittings derived: 1
+progress written: []
+the run stopped:  Hardcover refused the call: HTTP 403 insufficient_scope (token is missing a scope this request needs) [needs scope write:library]
+
+the error the relay reported, with the service's own words in it:
+  Hardcover refused the call: HTTP 403 insufficient_scope (token is missing a scope this request needs) [needs scope write:library]
+
+the response body that produced it, as the double sends it:
+  {"error": "insufficient_scope", "error_description": "token is missing a scope this request needs", "scope": "write:library"}
+
+ledger after the refusal (nothing may be marked written):
+670108835427962c46d53ea3cc1fd5cf @ 1760000000 hardcover: pending error_status=403 — Hardcover refused the call: HTTP 403 insufficient_scope (token is missing a scope this request needs) [needs scope write:library]
+

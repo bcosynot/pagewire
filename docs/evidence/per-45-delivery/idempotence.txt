@@ -1,0 +1,8 @@
+progress writes after run one: 1
+progress writes after run two: 1
+run two delivered: []
+run two requests for this book: 0
+
+send log:
+670108835427962c46d53ea3cc1fd5cf @ 1760000000 hardcover: written external_id=90001
+

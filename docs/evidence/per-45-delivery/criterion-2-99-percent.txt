@@ -1,0 +1,14 @@
+the book that merely got to 99 %
+  page written:      317 of 320 (round(320 x 9900 / 10000))
+  entry status_id:   2 (2 = Currently Reading; nothing moved it off that)
+  read finished_at:  None
+  status changes naming its entry: 0
+
+books the relay reported finished: ['670108835427962c46d53ea3cc1fd5cf']
+
+full request log:
+3 mutation(s), in order:
+  update_user_book_read  read=90001  progress_pages=448  action_at=2025-10-09T05:23:20-04:00
+  update_user_book       user_book=7001  status_id=3
+  update_user_book_read  read=90002  progress_pages=317  action_at=2025-10-09T05:23:20-04:00
+

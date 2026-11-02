@@ -1,0 +1,8 @@
+PAGEWIRE_HARDCOVER_ENABLED is the switch; with it off the relay builds no client at all.
+
+report.enabled:            False
+requests received by the service: 0
+queries the service saw:   0
+progress writes:           0
+send-log rows:             0
+written:                   []
