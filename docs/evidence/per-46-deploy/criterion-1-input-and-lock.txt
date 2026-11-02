@@ -1,0 +1,43 @@
+=== Criterion 1 — the relay is a flake input by URL, pinned in flake.lock ===
+
+The config repo `bcosynot/base-server` (private) takes the relay the way it already takes
+jhop, ouch and prodlog.
+
+-------------------------------------------------------------------------------
+The input line — `flake.nix`
+-------------------------------------------------------------------------------
+    # The Pagewire relay (PER-46). Like jhop and ouch it is consumed as a flake
+    # input from its own repository rather than as a directory here, because the
+    # config repo holds no application source. It is unpinned pure Python and
+    # resolves its own nixpkgs, so it does not follow ours.
+    pagewire.url = "github:bcosynot/pagewire";
+
+A URL, not a local path. `bcosynot/pagewire` is **PUBLIC**, matching every other app input
+the box fetches — it has no GitHub credentials, so a private input could never be built
+there. History was scanned for secrets before it was published and came back clean.
+
+-------------------------------------------------------------------------------
+The lock entry — an input by URL with no lock entry is NOT this criterion,
+so `locked` must be present, not just `url`
+-------------------------------------------------------------------------------
+    $ python3 -c "import json; d=json.load(open('flake.lock')); print(json.dumps(d['nodes']['pagewire'], indent=2))"
+    {
+      "locked": {
+        "lastModified": 1793626345,
+        "narHash": "sha256-rdLLI+5l/EViU9OpioweYuAWI655wYrsUhGmvgf6o4A=",
+        "owner": "bcosynot",
+        "repo": "pagewire",
+        "rev": "51512839c559acc1146336281dfc3f24c25a1dbd",
+        "type": "github"
+      },
+      "original": { "owner": "bcosynot", "repo": "pagewire", "type": "github" }
+    }
+
+`rev` `5151283` is the relay's `main` — the commit `pagewire#10` merged as — so the module
+and the package the config resolves come from the same revision.
+
+The lock is a committed file on `unit`, which the repo never had before PER-49; without it
+the config resolved whatever nixpkgs HEAD happened to be, which is how the two pre-existing
+defects below stayed hidden.
+
+**Criterion 1 is MET.**

@@ -1,0 +1,47 @@
+=== Criterion 2 — `nix flake check` AND `nix build .#nixosConfigurations.base-server-lxc…` ===
+
+Both commands, both succeeding, against the real configuration.
+
+-------------------------------------------------------------------------------
+CI, for the head of `unit`
+-------------------------------------------------------------------------------
+`bcosynot/base-server` now has CI (`.github/workflows/nix.yml`) and it runs both commands
+plus a third step that fails if `services.unit` ever reappears. **Nothing is
+`continue-on-error`.** Green run for `unit`:
+
+    https://github.com/bcosynot/base-server/actions/runs/41483510123
+
+Its steps, all green:
+
+    ✓ Assert NGINX Unit is not configured
+    ✓ nix flake check
+    ✓ Evaluate the LXC configuration
+    ✓ Build the LXC system
+
+`nix flake check` passing is the part that took PER-49: it previously could not pass,
+because `nixosConfigurations.base-server` (aarch64, not the LXC target) imported a
+`./configuration.nix` that existed on no branch. That file now exists.
+
+-------------------------------------------------------------------------------
+And on the box itself, against the real target
+-------------------------------------------------------------------------------
+    $ nixos-rebuild build --flake /root/base-server-lxc#base-server-lxc --max-jobs 2
+    …
+    building '/nix/store/…-unit-pagewire.service.drv'...
+    building '/nix/store/…-unit-transistor.service.drv'...
+    building '/nix/store/…-nixos-system-unnamed-lxc-proxmox-26.11.20261102.a79b57f.drv'...
+    Done. The new configuration is
+      /nix/store/i2snkm8g2gjil3h0wqihai1iil4zfj4k-nixos-system-unnamed-lxc-proxmox-26.11.20261102.a79b57f
+    BUILD_EXIT=0
+
+The relay's own units are realized inside a complete, buildable NixOS system, and the
+system was then switched to and rebooted into (`criterion-3-service-and-reboot.txt`).
+
+`#base-server-lxc` is required: without it nixos-rebuild looks for a configuration named
+after the hostname (`nixos`) and fails. `--max-jobs 2` because the container has 2 GB RAM.
+
+Note the version string — `26.11.20261102.a79b57f` — is PER-49's nixpkgs pin, not the
+`26.11.20260802.0744b52` this criterion was written against. The pin moved deliberately;
+see PER-49.
+
+**Criterion 2 is MET.**
