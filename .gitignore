@@ -25,6 +25,9 @@ state/
 .env
 .env.*
 !.env.example
+# The relay's real tunables/token file (the shipped example lives in deploy/).
+*.env
+!*.env.example
 token.json
 spike/plugin/token.json
 

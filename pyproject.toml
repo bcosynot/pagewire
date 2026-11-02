@@ -21,6 +21,13 @@ dev = [
   "httpx>=0.27",
 ]
 
+[project.scripts]
+# What the NixOS module starts. Keep these stable: they are named in the systemd units
+# and in docs/evidence/per-46-deploy/.
+pagewire-serve = "pagewire.app:serve"
+pagewire-derive = "pagewire.sessions:main"
+pagewire-deliver = "pagewire.delivery:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
