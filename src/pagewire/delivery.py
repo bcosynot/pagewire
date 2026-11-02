@@ -1,4 +1,9 @@
-"""Delivering finalised sittings to Readwise Books.
+"""Delivering finalised sittings to both destinations, and this is the entry point.
+
+Both halves live behind one command because deploy wants one timer and one ledger, and
+because the two destinations are independent by design: each has its own switch, its own
+credential, and its own rules — see `hardcover_delivery` for the second one — so one
+service being unreachable must not stop the other from being delivered.
 
 The design's rule is that nothing is delivered while a sitting can still grow: Readwise
 records only finished sessions, and a recorded session is immutable except for its caption.
@@ -42,6 +47,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone as dt_timezone
 from typing import Any, Callable, Mapping, Sequence
 
+from .hardcover import HardcoverClient
+from .hardcover_delivery import deliver_hardcover, pending_report
 from .readwise import (
     MAX_SESSIONS_PER_REQUEST,
     ReadwiseClient,
@@ -554,7 +561,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if arguments.dry_run:
-        return _dry_run(storage, settings, client)
+        code = _dry_run(storage, settings, client)
+        print(f"\nhardcover: {'on' if settings.hardcover_enabled else 'off'}")
+        for line in pending_report(
+            storage, throttle_seconds=settings.hardcover_throttle_seconds
+        ):
+            print(line)
+        return code
 
     print(f"readwise: {'on' if client is not None else 'off'}")
     report = deliver_readwise(
@@ -571,17 +584,53 @@ def main(argv: list[str] | None = None) -> int:
         log=lambda line: print(line, flush=True),
     )
     print(
-        f"\n{len(report.delivered)} sent, {len(report.reconciled)} already present,"
+        f"\nreadwise: {len(report.delivered)} sent, {len(report.reconciled)} already present,"
         f" {len(report.failed)} failed, {len(report.finished)} finished"
     )
     if report.aborted:
-        print(f"\nstopped: {report.aborted}")
+        print(f"  stopped: {report.aborted}")
     if report.failed:
-        print("\nnot delivered (fix the cause, then re-run):")
+        print("\n  not delivered (fix the cause, then re-run):")
         for (document, started_at), message in report.failed.items():
-            print(f"  {document} @ {started_at}\n    {message}")
-        return 1
-    return 0
+            print(f"    {document} @ {started_at}\n      {message}")
+
+    # The two destinations are independent by design — either may be the only one switched
+    # on — so one unreachable service must not stop the other from being delivered.
+    hardcover = _run_hardcover(storage, settings)
+
+    return 1 if (report.failed or hardcover.failed) else 0
+
+
+def _run_hardcover(storage: Storage, settings: Any) -> Any:
+    """Run the second destination, which has its own switch and its own credential."""
+    print(f"\nhardcover: {'on' if settings.hardcover_enabled else 'off'}")
+    client = (
+        HardcoverClient(
+            settings.hardcover_token,
+            endpoint=settings.hardcover_endpoint,
+            timeout=settings.service_timeout_seconds,
+        )
+        if settings.hardcover_enabled
+        else None
+    )
+    report = deliver_hardcover(
+        storage,
+        client,
+        throttle_seconds=settings.hardcover_throttle_seconds,
+        timezone=settings.timezone,
+        log=lambda line: print(f"  {line}", flush=True),
+    )
+    print(
+        f"  {report.requests} write(s) for {len(report.written)} sitting(s),"
+        f" {len(report.throttled)} book(s) throttled, {len(report.finished)} finished"
+    )
+    if report.aborted:
+        print(f"  stopped: {report.aborted}")
+    if report.failed:
+        print("\n  not written (fix the cause, then re-run):")
+        for (document, started_at), message in report.failed.items():
+            print(f"    {document} @ {started_at}\n      {message}")
+    return report
 
 
 def _dry_run(storage: Storage, settings: Any, client: ReadwiseClient | None) -> int:

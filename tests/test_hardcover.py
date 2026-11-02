@@ -18,7 +18,7 @@ import pytest
 
 from pagewire.hardcover import HardcoverClient, HardcoverError
 
-from service_fixtures import HardcoverServer
+from service_fixtures import HardcoverServer, top_level_fields
 
 JINN_BOT = {
     "id": 328491,
@@ -34,29 +34,6 @@ BURNING_GOD = {
 
 def _client(server: HardcoverServer, token: str = "hc-token") -> HardcoverClient:
     return HardcoverClient(token, endpoint=f"{server.address}/v1/graphql")
-
-
-def _top_level_fields(query: str) -> list[str]:
-    """The field names selected at the top level of a GraphQL document.
-
-    These are what Hardcover counts against the burst limit, so a test can assert the
-    document costs what it claims to cost. Argument lists are stripped first: `where` and
-    `limit` sit inside parentheses and are arguments, not selections, and Hardcover does
-    not count them.
-    """
-    body = query.split("{", 1)[1].rsplit("}", 1)[0]
-    without_arguments = re.sub(r"\([^()]*\)", "", body)
-
-    depth = 0
-    fields: list[str] = []
-    for token in re.findall(r"[{}]|[A-Za-z_][A-Za-z_0-9]*", without_arguments):
-        if token == "{":
-            depth += 1
-        elif token == "}":
-            depth -= 1
-        elif depth == 0:
-            fields.append(token)
-    return fields
 
 
 # ---------------------------------------------------------------- criterion 2
@@ -75,7 +52,7 @@ def test_an_isbn_hardcover_carries_resolves_to_both_ids_in_one_query():
     assert str(found.book_id) == "328491"
     assert str(found.edition_id) == "990011"
     assert len(server.queries) == 1
-    assert _top_level_fields(server.queries[0]) == ["editions"]
+    assert top_level_fields(server.queries[0]) == ["editions"]
 
 
 def test_an_isbn_hardcover_does_not_carry_resolves_to_nothing():
