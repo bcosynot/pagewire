@@ -53,6 +53,18 @@ def top_level_fields(query: str) -> list[str]:
     return fields
 
 
+def normalise_title(value: str) -> str:
+    """How Hardcover's search compares titles: case and punctuation do not matter.
+
+    This is the difference the relay depends on. Measured against the real API, an exact
+    `title: {_eq: …}` for "The Jinn-Bot of Shantiport" returned five duplicate stubs — no
+    author, no cover, no ISBN, zero readers each — and missed the real record entirely
+    (Samit Basu, 416pp, ISBN 9781250827517). `search` found it. So the double has to
+    normalize too, or it could not show the two apart.
+    """
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", value.casefold()).split())
+
+
 def selects(query: str, field: str) -> bool:
     """Whether `field { … }` or `field(args) { … }` is one of a document's selections.
 
@@ -579,6 +591,44 @@ class HardcoverServer(_Server):
 
         return 200, _json({"data": self._data(query, variables)})
 
+    def _book_view(self, book: dict[str, Any]) -> dict[str, Any]:
+        """One catalog entry as the relay's title lookup selects it.
+
+        The catalog entries the tests write are deliberately thin — id, title, editions —
+        and everything else is absent unless a test set it, because a double that invented
+        an author would let a page look right while showing nothing.
+        """
+        editions = book.get("editions") or []
+        return {
+            "id": book["id"],
+            "title": book["title"],
+            "subtitle": book.get("subtitle"),
+            "description": book.get("description"),
+            "release_year": book.get("release_year"),
+            "pages": book.get("pages"),
+            "users_count": book.get("users_count", 0),
+            "users_read_count": book.get("users_read_count", 0),
+            "ratings_count": book.get("ratings_count", 0),
+            "editions_count": book.get("editions_count", len(editions)),
+            "is_partial_book": book.get("is_partial_book", False),
+            "default_ebook_edition_id": book.get("default_ebook_edition_id"),
+            "image": book.get("image"),
+            "contributions": (
+                [{"author": {"name": book["author"]}}] if book.get("author") else []
+            ),
+            "editions": [
+                {
+                    "id": e["id"],
+                    "isbn_13": e.get("isbn_13"),
+                    "isbn_10": e.get("isbn_10"),
+                    "pages": e.get("pages"),
+                    "edition_format": e.get("edition_format"),
+                    "release_year": e.get("release_year"),
+                }
+                for e in editions
+            ],
+        }
+
     def _data(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         if "editions(where: {isbn_13" in query:
             isbn = variables.get("isbn")
@@ -591,17 +641,20 @@ class HardcoverServer(_Server):
                 ]
             }
 
-        if "books(where: {title" in query:
-            title = variables.get("title")
+        if "search(" in query:
+            # Hardcover's own search. Normalising here is what makes it different from an
+            # exact match, which is the whole reason the relay asks it instead.
+            wanted = normalise_title(str(variables.get("query") or ""))
+            found = [b for b in self.catalog if normalise_title(str(b["title"])) == wanted]
+            return {"search": {"ids": [b["id"] for b in found]}}
+
+        if "books(where: {id" in query:
+            wanted = set(variables.get("ids") or [])
             return {
                 "books": [
-                    {
-                        "id": book["id"],
-                        "title": book["title"],
-                        "editions": [{"id": e["id"]} for e in book["editions"]],
-                    }
+                    self._book_view(book)
                     for book in self.catalog
-                    if book["title"] == title
+                    if book["id"] in wanted
                 ]
             }
 

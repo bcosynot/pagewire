@@ -298,7 +298,7 @@ def _candidates_page(row: Any, candidates: list[Any], *, token: str, hardcover_e
         parts.append("<p>Hardcover is switched off, so there is nothing to look up.</p>")
     elif not candidates:
         parts.append(
-            "<p>Hardcover has no book under exactly that title. Find it on hardcover.app "
+            "<p>Hardcover has no book under that title. Find it on hardcover.app "
             "and paste its ids into the form instead.</p>"
         )
     else:
@@ -306,15 +306,56 @@ def _candidates_page(row: Any, candidates: list[Any], *, token: str, hardcover_e
         for candidate in candidates:
             edition = "" if candidate.edition_id is None else html.escape(str(candidate.edition_id))
             book = html.escape(str(candidate.book_id))
+
+            # Everything that tells two entries apart. A duplicate with none of it shows
+            # as an empty row on purpose: the real catalog is full of those, and a missing
+            # fact must read as missing rather than be filled in with a guess.
+            facts = []
+            if candidate.author:
+                facts.append(html.escape(str(candidate.author)))
+            if candidate.release_year:
+                facts.append(str(candidate.release_year))
+            if candidate.pages:
+                facts.append(f"{candidate.pages} pp")
+            if candidate.isbn_13:
+                facts.append(f"ISBN {html.escape(str(candidate.isbn_13))}")
+            if candidate.users_count:
+                facts.append(f"{candidate.users_count} reader{'s' if candidate.users_count != 1 else ''}")
+            if candidate.editions_count:
+                facts.append(
+                    f"{candidate.editions_count} edition"
+                    f"{'' if candidate.editions_count == 1 else 's'}"
+                )
+
+            cover = ""
+            if candidate.cover_url:
+                cover = (
+                    f'<img src="{html.escape(str(candidate.cover_url), quote=True)}" '
+                    'alt="" width="72" loading="lazy">'
+                )
+
+            description = ""
+            if candidate.description:
+                text = str(candidate.description).strip()
+                if len(text) > 280:
+                    text = text[:277].rstrip() + "…"
+                description = f'<p class="desc">{html.escape(text)}</p>'
+
             parts.append(
                 "<li>"
-                f"<span>{html.escape(str(candidate.title or '—'))}</span> "
+                f"{cover}"
+                '<div class="cand">'
+                f"<strong>{html.escape(str(candidate.title or '—'))}</strong>"
+                f'<div class="meta">{html.escape(" · ".join(facts)) or "nothing recorded"}</div>'
+                f'<div class="meta">book {book}'
+                f"{'' if not edition else f' / edition {edition}'}</div>"
+                f"{description}"
+                "</div>"
                 f'<form method="post" action="/review/{document}">'
                 f'<input type="hidden" name="token" value="{html.escape(token, quote=True)}">'
                 f'<input type="hidden" name="hardcover_id" value="{book}">'
                 f'<input type="hidden" name="hardcover_edition_id" value="{edition}">'
-                f"<button>Confirm as book {book}"
-                f"{'' if not edition else f' / edition {edition}'}</button>"
+                "<button>Confirm</button>"
                 "</form></li>"
             )
         parts.append("</ul>")
@@ -355,7 +396,12 @@ input { font: inherit; padding: .2rem .3rem; width: 9.5rem; }
 button { font: inherit; padding: .2rem .6rem; cursor: pointer; }
 .toolbar { margin: 1rem 0; }
 .candidates { list-style: none; padding: 0; }
-.candidates li { display: flex; gap: 1rem; align-items: center; padding: .3rem 0; }
+.candidates li { display: flex; gap: 1rem; align-items: flex-start; padding: .5rem 0; border-top: 1px solid #8882; }
+.candidates img { border-radius: 3px; background: #8882; flex: none; }
+.cand { flex: 1; min-width: 0; }
+.meta { color: #666; font-size: .85rem; }
+.desc { color: #444; margin: .25rem 0 0; }}
+@media (prefers-color-scheme: dark) {{ .desc { color: #bbb; } }}
 a { color: inherit; }
 """
 

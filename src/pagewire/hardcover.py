@@ -139,16 +139,50 @@ mutation AddUserBook($object: UserBookCreateInput!) {
 }
 """
 
-# Exact title match, deliberately. Hardcover disables `_ilike` and the other fuzzy
-# operators, and its `search` answers in a Typesense document whose shape the docs do not
-# give — so this offers what it can prove, and the page always allows a pasted id.
-BOOKS_BY_TITLE = """
-query BooksByTitle($title: String!, $limit: Int!) {
-  books(where: {title: {_eq: $title}}, limit: $limit) {
+
+# Hardcover's own search. It normalises case and punctuation, which `_eq` does not, and it
+# is the only fuzzy route available: `_ilike` and friends are refused outright by the
+# server — measured, `{"error": "ilike and related operations are not permitted on this
+# server."}`. Returns ids only; the records themselves come from the query below.
+SEARCH_BOOK_IDS = """
+query SearchBookIds($query: String!, $limit: Int!) {
+  search(query: $query, query_type: "Book", per_page: $limit) {
+    ids
+  }
+}
+"""
+
+# Everything a human needs to tell duplicates apart, in one round trip for every id the
+# search returned. `_in` does not rank, so the caller restores the search's order.
+BOOKS_BY_IDS = """
+query BooksByIds($ids: [Int!]!) {
+  books(where: {id: {_in: $ids}}) {
     id
     title
-    editions(limit: 1) {
+    subtitle
+    description
+    release_year
+    pages
+    users_count
+    users_read_count
+    ratings_count
+    editions_count
+    default_ebook_edition_id
+    image {
+      url
+    }
+    contributions {
+      author {
+        name
+      }
+    }
+    editions(limit: 5) {
       id
+      isbn_13
+      isbn_10
+      pages
+      edition_format
+      release_year
     }
   }
 }
@@ -207,11 +241,25 @@ class HardcoverRead:
 
 @dataclass(frozen=True)
 class HardcoverCandidate:
-    """A book the catalog has under a given title, for a human to accept or ignore."""
+    """A book the catalog has under a given title, for a human to accept or ignore.
+
+    The detail below the ids exists because the ids alone are not a choice: the real
+    catalog holds several entries with the same title, only one of which carries an author,
+    a cover, an ISBN and a page count. Everything is optional — a duplicate entry with
+    nothing in it must read as empty rather than be given a plausible-looking default.
+    """
 
     book_id: str
     title: str | None
     edition_id: str | None
+    author: str | None = None
+    release_year: int | None = None
+    pages: int | None = None
+    isbn_13: str | None = None
+    cover_url: str | None = None
+    description: str | None = None
+    users_count: int | None = None
+    editions_count: int | None = None
 
 
 class HardcoverClient:
@@ -370,20 +418,62 @@ class HardcoverClient:
         the ambiguous kind, and an ambiguous match is held for the owner by the design's
         own rule.
         """
-        data = self._execute(BOOKS_BY_TITLE, {"title": title, "limit": limit})
-        candidates = []
-        for book in data.get("books") or []:
-            if book.get("id") is None:
-                continue
-            edition = _first(book.get("editions")) or {}
-            candidates.append(
-                HardcoverCandidate(
-                    book_id=str(book["id"]),
-                    title=book.get("title"),
-                    edition_id=None if edition.get("id") is None else str(edition["id"]),
-                )
-            )
-        return candidates
+        ids = self._search_ids(title, limit=limit)
+        if not ids:
+            return []
+        data = self._execute(BOOKS_BY_IDS, {"ids": ids})
+        found = {
+            str(book["id"]): book
+            for book in data.get("books") or []
+            if book.get("id") is not None
+        }
+        # The search ranks and `_in` does not, so the server's order is restored here.
+        return [self._candidate(found[str(i)]) for i in ids if str(i) in found]
+
+    def _search_ids(self, title: str, *, limit: int) -> list[int]:
+        """The book ids Hardcover's search finds for this title, best first."""
+        data = self._execute(SEARCH_BOOK_IDS, {"query": title, "limit": limit})
+        found = data.get("search") or {}
+        return [value for value in (found.get("ids") or []) if isinstance(value, int)]
+
+    @staticmethod
+    def _candidate(book: dict[str, Any]) -> HardcoverCandidate:
+        """One search hit, as something a human can choose on.
+
+        The edition offered is the book's `default_ebook_edition` when it has one, because
+        that is the edition progress is counted in — offering the first edition returned
+        gives the book a page count nothing else agrees with.
+        """
+        author = None
+        for contribution in book.get("contributions") or []:
+            name = (contribution.get("author") or {}).get("name")
+            if name:
+                author = name
+                break
+
+        editions = book.get("editions") or []
+        default_id = book.get("default_ebook_edition_id")
+        chosen = next((e for e in editions if e.get("id") == default_id), None)
+        if chosen is None:
+            chosen = _first(editions) or {}
+
+        pages = chosen.get("pages")
+        if pages is None:
+            pages = book.get("pages")
+
+        return HardcoverCandidate(
+            book_id=str(book["id"]),
+            title=book.get("title"),
+            edition_id=None if chosen.get("id") is None else str(chosen["id"]),
+            author=author,
+            release_year=book.get("release_year"),
+            pages=pages,
+            isbn_13=chosen.get("isbn_13"),
+            cover_url=(book.get("image") or {}).get("url"),
+            description=book.get("description"),
+            users_count=book.get("users_count"),
+            editions_count=book.get("editions_count"),
+        )
 
     # -- internals ---------------------------------------------------------
 

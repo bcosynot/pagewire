@@ -103,9 +103,17 @@ def test_the_privacy_setting_comes_back_with_the_library_lookup():
 def test_a_title_lookup_offers_candidates_rather_than_choosing_one():
     """The review page's prefill for a row with no ISBN.
 
-    A candidate is a suggestion a human confirms; nothing here writes an identity. The
-    exact-title match is deliberate — Hardcover disables `_ilike` and friends, and its
-    fuzzy `search` answers in a Typesense document whose shape is not documented.
+    A candidate is a suggestion a human confirms; nothing here writes an identity.
+
+    Corrected 2026-11-02, by measurement: this used to say the exact-title match was
+    deliberate because Hardcover disables `_ilike` and its `search` "answers in a Typesense
+    document whose shape is not documented". The first half is true — `_ilike` really is
+    refused, measured as `{"error": "ilike and related operations are not permitted on this
+    server."}`. The second is not: `search { ids }` is documented enough to use, and the
+    exact match fails at its job. Against the real API, `title: {_eq: "The Jinn-Bot of
+    Shantiport"}` returned five duplicate stubs with no author, no cover, no ISBN and zero
+    readers, and never returned the real record at all (id 770867 — Samit Basu, 416pp,
+    ISBN 9781250827517), which `search` found first.
     """
     with HardcoverServer(catalog=[JINN_BOT, BURNING_GOD]) as server:
         candidates = _client(server).find_by_title("Burning God")
@@ -117,6 +125,89 @@ def test_a_title_lookup_offers_candidates_rather_than_choosing_one():
 def test_a_title_lookup_that_matches_nothing_offers_nothing():
     with HardcoverServer(catalog=[JINN_BOT]) as server:
         assert _client(server).find_by_title("A Book With No ISBN") == []
+
+
+# ------------------------------------- the lookup a human can actually choose from
+
+
+JINN_BOT_RICH = {
+    "id": 770867,
+    "title": "The Jinn-Bot of Shantiport",
+    "author": "Samit Basu",
+    "release_year": 2023,
+    "pages": 416,
+    "users_count": 261,
+    "users_read_count": 41,
+    "ratings_count": 27,
+    "description": "From international bestseller Samit Basu, an exuberant new sci-fi adventure.",
+    "image": {"url": "https://assets.hardcover.app/edition/30772692/cover.jpeg"},
+    "default_ebook_edition_id": 30772692,
+    "editions": [
+        {
+            "id": 30772692,
+            "isbn_13": "9781250827517",
+            "pages": 416,
+            "edition_format": "ebook",
+            "release_year": 2023,
+        }
+    ],
+}
+# One of the five real stubs, verbatim from the API: an id, a title and nothing else.
+JINN_BOT_STUB = {"id": 2055472, "title": "The Jinn-Bot of Shantiport", "editions": [{"id": 32238799}]}
+
+
+def test_a_title_lookup_uses_hardcovers_search_so_it_still_finds_the_record():
+    """`search` normalises; an exact match does not.
+
+    Both entries below are the same book as far as Hardcover is concerned, and neither
+    would be found by `title: {_eq: "Burning God"}`.
+    """
+    catalog = [
+        {"id": 1, "title": "Burning god", "editions": [{"id": 11}]},  # case differs
+        {"id": 2, "title": "Burning God ", "editions": [{"id": 22}]},  # trailing space
+    ]
+    with HardcoverServer(catalog=catalog) as server:
+        candidates = _client(server).find_by_title("Burning God")
+
+    assert sorted(str(c.book_id) for c in candidates) == ["1", "2"]
+
+
+def test_a_candidate_carries_what_a_human_needs_to_choose_between_duplicates():
+    """Five identical titles distinguished only by internal ids is not a choice."""
+    with HardcoverServer(catalog=[JINN_BOT_STUB, JINN_BOT_RICH]) as server:
+        candidates = _client(server).find_by_title("The Jinn-Bot of Shantiport")
+
+    rich = next(c for c in candidates if str(c.book_id) == "770867")
+    assert rich.author == "Samit Basu"
+    assert rich.release_year == 2023
+    assert rich.pages == 416
+    assert rich.isbn_13 == "9781250827517"
+    assert rich.cover_url == "https://assets.hardcover.app/edition/30772692/cover.jpeg"
+    assert (rich.description or "").startswith("From international bestseller")
+    assert rich.users_count == 261
+
+
+def test_a_stub_entry_offers_nothing_to_choose_on():
+    """A stub must read as a stub, not as a book with blank fields."""
+    with HardcoverServer(catalog=[JINN_BOT_STUB]) as server:
+        candidate = _client(server).find_by_title("The Jinn-Bot of Shantiport")[0]
+
+    assert str(candidate.book_id) == "2055472"
+    assert candidate.author is None
+    assert candidate.cover_url is None
+    assert candidate.isbn_13 is None
+    assert candidate.description is None
+
+
+def test_the_edition_offered_is_the_default_ebook_one_not_whichever_came_first():
+    """Progress is counted in the offered edition's pages, so the wrong one gives the book
+    a page count nothing else agrees with."""
+    other_first = {**JINN_BOT_RICH, "editions": [{"id": 999001, "pages": 1}, *JINN_BOT_RICH["editions"]]}
+    with HardcoverServer(catalog=[other_first]) as server:
+        candidate = _client(server).find_by_title("The Jinn-Bot of Shantiport")[0]
+
+    assert str(candidate.edition_id) == "30772692"
+    assert candidate.isbn_13 == "9781250827517"
 
 
 # ---------------------------------------------------------------- criterion 5

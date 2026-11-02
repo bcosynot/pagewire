@@ -271,5 +271,54 @@ def test_the_candidates_page_says_when_hardcover_has_no_book_under_that_title(tm
             page = client.get(f"/review/{GOD_DOCUMENT}/candidates?token={TOKEN}")
 
     assert page.status_code == 200
-    assert "no book under exactly that title" in page.text
+    assert "no book under that title" in page.text
+    assert _row(store, GOD_DOCUMENT)["status"] == "unmatched"
+
+
+#: The real record for this row's book, as the API answers it.
+BURNING_GOD_RICH = {
+    "id": 118822,
+    "title": "Burning God",
+    "author": "R. F. Kuang",
+    "release_year": 2020,
+    "pages": 640,
+    "users_count": 987,
+    "users_read_count": 120,
+    "description": "The sequel to The Poppy War, and the end of the trilogy.",
+    "image": {"url": "https://assets.hardcover.app/edition/640044/cover.jpeg"},
+    "default_ebook_edition_id": 640044,
+    "editions": [
+        {
+            "id": 640044,
+            "isbn_13": "9780062662651",
+            "pages": 640,
+            "edition_format": "ebook",
+            "release_year": 2020,
+        }
+    ],
+}
+#: A duplicate entry with nothing in it, which is what the queued rows are full of.
+BURNING_GOD_STUB = {"id": 2055472, "title": "Burning God", "editions": [{"id": 32238799}]}
+
+
+def test_the_candidates_page_shows_what_tells_two_candidates_apart(tmp_path):
+    """The complaint this answers: two identical titles distinguished only by internal ids
+    is not a choice. Cover, author, year, page count and ISBN are what make it one."""
+    store = Storage(str(tmp_path / "pagewire.db"))
+    _seed(store)
+
+    with HardcoverServer(catalog=[BURNING_GOD_STUB, BURNING_GOD_RICH]) as hc:
+        app = create_app(_settings(store.path, hardcover=f"{hc.address}/v1/graphql"))
+        with TestClient(app) as client:
+            page = client.get(f"/review/{GOD_DOCUMENT}/candidates?token={TOKEN}")
+
+    assert page.status_code == 200
+    assert "R. F. Kuang" in page.text            # author
+    assert "9780062662651" in page.text          # the edition's ISBN
+    assert "640" in page.text                    # page count
+    assert "2020" in page.text                   # year
+    assert "assets.hardcover.app" in page.text   # cover
+    assert "<img" in page.text                   # rendered, not just mentioned
+    assert "The sequel to The Poppy War" in page.text  # description
+    # Looking still writes nothing.
     assert _row(store, GOD_DOCUMENT)["status"] == "unmatched"
