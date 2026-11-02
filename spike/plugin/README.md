@@ -9,8 +9,12 @@ Setup
    must stay `pagewire` (the firmware caps plugin folder names at 23 bytes).
 2. Copy `token.json.example` to `token.json` and replace the value with a secret of
    your own. The listener needs the same value.
-3. Edit `config.json` so `server` points at the machine running `spike/listener.py`,
-   for example `http://192.168.1.50:8799`.
+3. Edit `config.json` so `server` points at whatever will receive the events, for example
+   `http://192.168.1.50:8799`. For the **deployed relay** that is the box's LAN address,
+   `http://192.168.0.112:8799` — staging with
+   `make sd DEST=<card> SERVER=http://192.168.0.112:8799` writes it for you, instead of
+   this machine's address. `make sd` also prints the staged token's sha256, which must
+   match the relay's `PAGEWIRE_TOKEN`.
 4. On the device: Settings → Connectivity → Plugins → Enabled. This is off by default.
 5. Home → Plugins should now list "Pagewire Spike".
 
