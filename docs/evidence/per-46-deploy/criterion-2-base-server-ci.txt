@@ -1,0 +1,60 @@
+criterion 2, the other half: adding the same CI to the CONFIG repo found two
+pre-existing blockers, neither of them caused by the pagewire wiring.
+
+The config repo (bcosynot/base-server) had no CI at all. A workflow was added on
+the `pagewire-input` branch running the evaluation half of criterion 2 —
+
+    nix eval --raw .#nixosConfigurations.base-server-lxc.config.system.build.toplevel.drvPath
+
+— which forces the whole LXC configuration without building it, and then the
+flake-wide `nix flake check`.
+
+Two separate failures, in the order they appear.
+
+1. The input resolves to the DEFAULT branch, where the flake does not exist yet.
+
+   error:
+          … while updating the lock file of flake 'git+file:///…?ref=refs/heads/pagewire-input…'
+          … while updating the flake input 'pagewire'
+          error: path '«github:bcosynot/pagewire/5e54981»/flake.nix' does not exist
+
+   `5e54981` is `main` on the relay repo. `pagewire.url = "github:bcosynot/pagewire"`
+   names a repo, and nix resolves it to that repo's default branch — which does not
+   carry `flake.nix` until the relay's own PR lands. This one fixes itself on merge;
+   it is an ORDERING constraint between the two PRs, not a defect.
+
+2. With the input pointed at a ref that does carry the flake, evaluation gets all
+   the way into the module system and then dies on an assertion that predates this
+   branch entirely:
+
+   error:
+          Failed assertions:
+          - The option definition `services.unit' in `…/flake.nix' no longer has any effect;
+            please remove it.
+            services.unit has been removed together with pkgs.unit.
+
+   NGINX Unit is gone from nixpkgs, and this repo's `webServer` module still sets
+   `services.unit`. Because the repo commits NO flake.lock, CI resolves current
+   nixpkgs — so the configuration does not evaluate today, at all, with or without
+   pagewire. It only ever evaluated on the box, which pins an older nixpkgs in a
+   `flake.lock` the repo does not track.
+
+   This is the same missing-lock fact reported for criterion 1, arriving from the
+   other direction: the repo has no lock, so it has never been evaluated against a
+   nixpkgs it actually pins, and the pin it does use on the box is the only thing
+   holding the `services.unit` reference up.
+
+What this does NOT show: that the pagewire module misbehaves. The failure is an
+assertion in the pre-existing webServer module, and it aborts evaluation before
+anything pagewire-specific can be judged. The relay's own flake IS green in CI,
+including a throwaway system built around the module (criterion-2-ci.txt).
+
+What has to be decided, by the owner:
+
+  * Whether the repo commits a flake.lock (the box's, or a fresh one), which would
+    pin a nixpkgs where `services.unit` still exists; or
+  * whether the webServer module migrates off NGINX Unit — the box still runs
+    `unit.service`, so this is a real migration, not a deletion.
+
+Until one of those happens, criterion 2 cannot be satisfied as written, and the
+CI job stays red for that reason.

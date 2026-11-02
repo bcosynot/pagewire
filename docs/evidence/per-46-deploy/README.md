@@ -6,6 +6,7 @@ What each file here is, and what it measured.
 |---|---|
 | `runbook.md` | The eight steps a machine with `nix` and access to the box runs, each naming the criterion it closes. **NOT YET RUN** — see its opening. |
 | `criterion-2-ci.txt` | The relay's own `nix flake check` in CI: the module evaluated and its throwaway system built (`✅ checks.x86_64-linux.pagewire-module-evaluates`). Not criterion 2 as written, but it closes the "nothing has ever evaluated the module" gap. Captured from the run at `db89266`. |
+| `criterion-2-base-server-ci.txt` | Adding the same CI to the **config** repo: it found two pre-existing blockers — the input resolving to a default branch with no flake, and `services.unit` having been removed from nixpkgs while the config still sets it. Neither is caused by the pagewire wiring. |
 | `criterion-6-shipped-tunables.txt` | Criterion 6's offline half: the shipped `deploy/pagewire.env.example` beside the test that pins it to `config.py`. Generated on this tree. |
 
 There is no generator script here, deliberately: the only artifact this session could
