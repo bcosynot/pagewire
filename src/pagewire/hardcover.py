@@ -1,7 +1,7 @@
-"""The Hardcover GraphQL API, as far as identifying a book needs it.
+"""The Hardcover GraphQL API, as far as identifying a book and writing its progress need it.
 
-Endpoint `https://api.hardcover.app/v1/graphql`, `Authorization: Bearer <token>`, one
-document per request. Three things shape this code.
+Endpoint `https://api.hardcover.app/v1/graphql`, `Authorization: Bearer ***,
+one document per request. Four things shape this code.
 
 **`editions` carries `book_id`.** So `editions(where: {isbn_13: {_eq: …}})` answers with
 the edition *and* the book it belongs to in one field. The alternative — walking
@@ -13,16 +13,18 @@ top-level fields per request and rejects anything larger with a 403 rather than
 throttling, so a document that spends two round trips where one would do costs real
 budget. `me` counts once however much is selected underneath it, which is why the
 account's default privacy setting rides along on the library lookup instead of getting a
-request of its own.
+request of its own, and why the read in progress and its edition's page count arrive
+together.
 
 **A refusal must never read as an absence.** A 401, a 403 `insufficient_scope`, and a
 GraphQL `errors` array in an HTTP 200 are all errors. Anything else would answer "this
 book is not in Hardcover" for a token problem and quietly enqueue the whole library for
 manual confirmation — which is precisely the failure criterion 5 exists to prevent.
 
-Nothing here writes progress or journal entries; that is the delivery ticket's job. The
-one write is `insert_user_book`, which puts a book on the `Currently Reading` shelf —
-Hardcover's status 2, the status that starts a read.
+**Hardcover has no sessions, and its server writes its own journal.** A sitting can only
+become progress on a read plus, at the end, a status; and `insert_reading_journal` is
+deliberately absent from this client, because the guide is explicit that the server writes
+the start/progress/finish entries and a client that writes one makes it appear twice.
 """
 
 from __future__ import annotations
@@ -38,9 +40,12 @@ HARDCOVER_ENDPOINT = "https://api.hardcover.app/v1/graphql"
 # Hardcover asks scripts to identify themselves.
 USER_AGENT = "pagewire/0.0.1 (+https://github.com/bcosynot/pagewire)"
 
-# Hardcover's own status ids. 2 is "Currently Reading", and setting it is what begins a
-# read — which is the right state for a book the relay has seen reading events for.
+# Hardcover's own status ids. 2 is "Currently Reading" and setting it is what begins a
+# read; 3 is "Read" and setting it is what finishes one — the server keeps the read in step
+# with the entry, which is why the relay never writes a read's dates itself.
+WANT_TO_READ = 1
 CURRENTLY_READING = 2
+READ_STATUS = 3
 
 # Selecting `book_id` on the edition is the whole trick: one top-level field, both ids.
 EDITIONS_BY_ISBN = """
@@ -60,6 +65,61 @@ query LibraryEntry($bookId: Int!, $editionId: Int!) {
     account_privacy_setting_id
     user_books(where: {book_id: {_eq: $bookId}, edition_id: {_eq: $editionId}}, limit: 1) {
       id
+    }
+  }
+}
+"""
+
+# The guide's own "Find the Read in Progress": "progress goes on the read that's started
+# and not yet finished", and the edition hangs off the read, so the page count the mapping
+# needs comes from the same field as the read id.
+READ_IN_PROGRESS = """
+query ReadInProgress($bookId: Int!, $editionId: Int!) {
+  me {
+    user_books(where: {book_id: {_eq: $bookId}, edition_id: {_eq: $editionId}}, limit: 1) {
+      id
+      status_id
+      user_book_reads(where: {finished_at: {_is_null: true}}, order_by: {id: desc}, limit: 1) {
+        id
+        started_at
+        progress_pages
+        edition {
+          id
+          pages
+        }
+      }
+    }
+  }
+}
+"""
+
+# The object is written inline rather than as a typed variable, which is the shape both the
+# guide and autoCalibre-Web's working client use: the input type's name is not documented,
+# and `action_at` is dated back to when the reading happened.
+UPDATE_READ_PROGRESS = """
+mutation UpdateReadProgress($id: Int!, $pages: Int, $actionAt: String) {
+  update_user_book_read(id: $id, object: {
+    progress_pages: $pages,
+    action_at: $actionAt
+  }) {
+    error
+    user_book_read {
+      id
+      progress_pages
+      started_at
+      finished_at
+    }
+  }
+}
+"""
+
+MARK_READ = """
+mutation MarkRead($id: Int!) {
+  update_user_book(id: $id, object: {status_id: 3}) {
+    error
+    user_book {
+      id
+      status_id
     }
   }
 }
@@ -109,6 +169,25 @@ class HardcoverEdition:
 
     book_id: str
     edition_id: str
+
+
+@dataclass(frozen=True)
+class HardcoverRead:
+    """The read a sitting's progress belongs on, and the pages it is counted in.
+
+    `read_id` is what `update_user_book_read` addresses, and is None when the entry has no
+    read in progress — a state worth distinguishing from having no entry at all, because
+    the entry's own id still addresses a status change. `user_book_id` is that id; neither
+    can be derived from the other. `edition_pages` is what Hardcover records, zero
+    included: refusals live in the delivery module, so this reports the fact rather than
+    judging it.
+    """
+
+    user_book_id: str
+    read_id: str | None = None
+    status_id: int | None = None
+    edition_pages: int | None = None
+    progress_pages: int | None = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +268,60 @@ class HardcoverClient:
             raise HardcoverError("Hardcover did not return the library entry it created")
         return str(entry["id"])
 
+    def read_state(
+        self, book_id: str | int, edition_id: str | int
+    ) -> HardcoverRead | None:
+        """The library entry's reading state: its read in progress, or its absence.
+
+        None when the book is not in the library at all. An entry with no open read comes
+        back with `read_id` None instead, because the two are different problems and only
+        one of them stops a status change — `update_user_book` addresses the entry, so a
+        book whose read the server has already finished can still be told it is Read.
+        """
+        data = self._execute(
+            READ_IN_PROGRESS,
+            {"bookId": _int(book_id), "editionId": _int(edition_id)},
+        )
+        account = _first(data.get("me")) or {}
+        entry = _first(account.get("user_books"))
+        if entry is None or entry.get("id") is None:
+            return None
+        read = _first(entry.get("user_book_reads"))
+        edition = _first((read or {}).get("edition")) or {}
+        return HardcoverRead(
+            user_book_id=str(entry["id"]),
+            read_id=None if (read or {}).get("id") is None else str((read or {})["id"]),
+            status_id=_int_or_none(entry.get("status_id")),
+            edition_pages=_int_or_none(edition.get("pages")),
+            progress_pages=_int_or_none((read or {}).get("progress_pages")),
+        )
+
+    def update_progress(
+        self, read_id: str | int, *, progress_pages: int, action_at: str | None = None
+    ) -> None:
+        """Put a page on the read in progress, dated to when the reading happened.
+
+        `action_at` is what dates the journal entry the server writes, which is the whole
+        reason a retroactive sync can say when the sitting ended rather than when the
+        relay ran.
+        """
+        payload = self._execute(
+            UPDATE_READ_PROGRESS,
+            {"id": _int(read_id), "pages": int(progress_pages), "actionAt": action_at},
+        )
+        self._check_write(
+            payload.get("update_user_book_read") or {}, "the progress write", "user_book_read"
+        )
+
+    def mark_read(self, user_book_id: str | int) -> None:
+        """Set the entry's status to Read, which is what finishes its open read.
+
+        The read's own `finished_at` is set by the server as part of this — the guide is
+        explicit that the server keeps the two in step, so the relay does not date it.
+        """
+        payload = self._execute(MARK_READ, {"id": _int(user_book_id)})
+        self._check_write(payload.get("update_user_book") or {}, "the finished status", "user_book")
+
     def find_by_title(self, title: str, *, limit: int = 5) -> list[HardcoverCandidate]:
         """Catalog books carrying exactly this title, for the review page to offer.
 
@@ -247,6 +380,18 @@ class HardcoverClient:
         return body.get("data") or {}
 
     @staticmethod
+    def _check_write(result: dict[str, Any], what: str, key: str) -> None:
+        """A mutation's own `error` field is a failure, HTTP 200 or not.
+
+        GraphQL answers most application-level problems inside the body, so a write the
+        service refused would otherwise look exactly like one it accepted.
+        """
+        if result.get("error"):
+            raise HardcoverError(f"Hardcover refused {what}: {result['error']}")
+        if not result.get(key):
+            raise HardcoverError(f"Hardcover answered {what} with no {key}")
+
+    @staticmethod
     def _refusal(exc: urllib.error.HTTPError) -> HardcoverError:
         """Turn the documented error body into a message worth showing a human."""
         try:
@@ -271,6 +416,20 @@ class HardcoverClient:
 def _int(value: str | int) -> int:
     """Hardcover's `book_id`/`edition_id` are `Int!`, so strings are not accepted."""
     return value if isinstance(value, int) else int(value)
+
+
+def _int_or_none(value: Any) -> int | None:
+    """An integer from Hardcover, or None when it is absent or unusable.
+
+    Deliberately permissive about zero: a read sitting at page 0 is a real state, and an
+    edition with 0 pages is a real (if useless) catalog entry. Deciding what those mean is
+    the delivery module's job, not this one's — a client that quietly turned a fact into an
+    absence would make the rule that refuses a zero-page edition unreachable.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _first(value: Any) -> dict[str, Any] | None:

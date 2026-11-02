@@ -451,8 +451,8 @@ class Storage:
                     SELECT d.document, d.started_at, d.ended_at, d.active_seconds,
                            d.paused_seconds, d.start_progress_bp, d.end_progress_bp,
                            d.finalised, d.finished,
-                           b.readwise_id, b.book_path, b.title,
-                           b.status AS book_status
+                           b.readwise_id, b.hardcover_id, b.hardcover_edition_id,
+                           b.book_path, b.title, b.status AS book_status
                     FROM derived_sessions AS d
                     JOIN books AS b ON b.document = d.document
                     WHERE d.finalised = 1 AND b.status IN ({placeholders})

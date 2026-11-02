@@ -16,11 +16,76 @@ against a made-up shape would only prove the fixture agrees with the client.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import urllib.parse
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+# Hardcover's own status ids, spelled out here rather than imported from the relay: a
+# double that read its constants out of the code under test could not disagree with it.
+WANT_TO_READ = 1
+CURRENTLY_READING = 2
+READ_STATUS = 3
+
+
+def top_level_fields(query: str) -> list[str]:
+    """The field names selected at the top level of a GraphQL document.
+
+    These are what Hardcover counts against the burst limit, so a test can assert the
+    document costs what it claims to cost. Argument lists are stripped first: `where` and
+    `limit` sit inside parentheses and are arguments, not selections, and Hardcover does
+    not count them.
+    """
+    body = query.split("{", 1)[1].rsplit("}", 1)[0]
+    without_arguments = re.sub(r"\([^()]*\)", "", body)
+
+    depth = 0
+    fields: list[str] = []
+    for token in re.findall(r"[{}]|[A-Za-z_][A-Za-z_0-9]*", without_arguments):
+        if token == "{":
+            depth += 1
+        elif token == "}":
+            depth -= 1
+        elif depth == 0:
+            fields.append(token)
+    return fields
+
+
+def selects(query: str, field: str) -> bool:
+    """Whether `field { … }` or `field(args) { … }` is one of a document's selections.
+
+    Distinguishes a selection from an argument: `edition { pages }` selects the field and
+    so does `user_book_reads(where: …) { id }`, while `edition_id: {_eq: $editionId}`
+    merely names a column inside `where`.
+    """
+    return re.search(rf"\b{field}\s*(\([^()]*\))?\s*\{{", query) is not None
+
+
+def object_literal(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    """The `object: { field: … }` literal of a mutation, resolved against its variables.
+
+    The relay writes its mutation arguments as an inline object literal, because
+    Hardcover's input type name is not documented — so the double has to read the field
+    names out of the document to know what the client meant. That is a feature: a document
+    that misspells a field is a document whose values the double cannot see, and the test
+    that reads them back fails.
+    """
+    match = re.search(r"object:\s*\{(.*?)\}", query, re.S)
+    if match is None:
+        return {}
+    resolved: dict[str, Any] = {}
+    for field, raw in re.findall(
+        r"([A-Za-z_][A-Za-z_0-9]*)\s*:\s*(\$[A-Za-z_0-9]+|-?\d+|\"[^\"]*\")", match.group(1)
+    ):
+        if raw.startswith("$"):
+            resolved[field] = variables.get(raw[1:])
+        elif raw.startswith('"'):
+            resolved[field] = raw.strip('"')
+        else:
+            resolved[field] = int(raw)
+    return resolved
 
 
 class _Server:
@@ -374,10 +439,20 @@ class ReadwiseServer(_Server):
 
 @dataclass
 class HardcoverServer(_Server):
-    """The Hardcover GraphQL API, as far as identity resolution uses it.
+    """The Hardcover GraphQL API, as far as identity resolution and delivery use it.
 
-    `catalog` is the public book/edition data: one entry per book, each with its editions
-    and their ISBNs. `library` is the owner's own shelves, keyed by the user book id.
+    `catalog` is the public book/edition data: one entry per book, each with its editions,
+    their ISBNs and their page counts. `library` is the owner's own shelves, keyed by the
+    user book id; an entry may carry a `user_book_reads` list, and `status_id`.
+
+    Two documented behaviours are modelled rather than stubbed, because the relay's
+    delivery rules are about them and a double that could not show the difference would
+    prove nothing: the server keeps reads in step with the entry's status ("setting 2
+    starts a read, 3 finishes it", and progress reaching the edition's last page finishes
+    the read on its own), and it writes journal entries itself.
+
+    `journals` exists for the same reason inverted: the relay must never create a journal
+    entry, and an absence can only be evidence if the double is able to record one.
     """
 
     token: str = "hc-token"
@@ -386,10 +461,52 @@ class HardcoverServer(_Server):
     read_scope: bool = True
     write_scope: bool = True
     graphql_errors: list[str] | None = None
+    # A mutation's own `error` field, for the failures Hardcover reports inside an HTTP
+    # 200 rather than as a status code. `write_error` refuses every write; `finish_error`
+    # refuses only the status change, which is how the two halves are shown to land
+    # independently.
+    write_error: str | None = None
+    finish_error: str | None = None
     requests: list[str] = field(default_factory=list)
     headers: list[dict[str, str]] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
+    # The variables each query arrived with, so a test can read the request log the way
+    # the owner would: which mutation, with which numbers.
+    variables: list[dict[str, Any]] = field(default_factory=list)
+    # Every `insert_reading_journal` that reached the server. The relay's job is to leave
+    # this empty — "the server writes those entries itself, or they appear twice".
+    journals: list[dict[str, Any]] = field(default_factory=list)
     _next_user_book_id: int = 7001
+    _next_read_id: int = 90001
+    _next_journal_id: int = 5001
+
+    # -- what the relay's writes did, for a test to read back ----------------
+
+    @property
+    def progress_writes(self) -> list[dict[str, Any]]:
+        """Each `update_user_book_read` that landed: the document, its variables, and the
+        `object` they spell out — the request log, read the way the owner would."""
+        return [
+            {
+                "query": query,
+                "variables": variables,
+                "object": object_literal(query, variables),
+            }
+            for query, variables in zip(self.queries, self.variables)
+            if "update_user_book_read(" in query
+        ]
+
+    def reads(self, user_book_id: int) -> list[dict[str, Any]]:
+        """The reads hanging off one library entry, as a flat list."""
+        entry = self.library.get(user_book_id) or {}
+        return list(entry.get("user_book_reads") or [])
+
+    def edition_pages(self, edition_id: Any) -> int | None:
+        for book in self.catalog:
+            for edition in book.get("editions") or []:
+                if edition.get("id") == edition_id:
+                    return edition.get("pages")
+        return None
 
     # -- the API -----------------------------------------------------------
 
@@ -411,8 +528,18 @@ class HardcoverServer(_Server):
         query = str((payload or {}).get("query", ""))
         variables = (payload or {}).get("variables") or {}
         self.queries.append(query)
+        self.variables.append(variables)
 
-        needs_write = "insert_user_book" in query
+        # Every documented mutation needs `write:library`, so each one is named here
+        # rather than only the first the relay happened to grow.
+        needs_write = any(
+            mutation in query
+            for mutation in (
+                "insert_user_book",
+                "update_user_book",
+                "insert_reading_journal",
+            )
+        )
         if not self.read_scope or (needs_write and not self.write_scope):
             return 403, _json(
                 {
@@ -458,7 +585,7 @@ class HardcoverServer(_Server):
             book_id = variables.get("bookId")
             edition_id = variables.get("editionId")
             found = [
-                {"id": entry["id"], "status_id": entry.get("status_id", 1)}
+                self._entry_view(entry, query=query)
                 for entry in self.library.values()
                 if entry["book_id"] == book_id
                 and (edition_id is None or entry.get("edition_id") == edition_id)
@@ -466,6 +593,31 @@ class HardcoverServer(_Server):
             # Hardcover's `me` answers as a list, which is why autoCalibre-Web reads
             # `response["me"][0]["user_books"]`.
             return {"me": [{"user_books": found, "account_privacy_setting_id": 1}]}
+
+        if "update_user_book_read(" in query:
+            return {"update_user_book_read": self._update_read(query, variables)}
+
+        if "update_user_book(" in query:
+            return {"update_user_book": self._update_library_entry(query, variables)}
+
+        if "insert_reading_journal(" in query:
+            entry_object = variables.get("object") or {}
+            self._next_journal_id += 1
+            journal = {
+                "id": self._next_journal_id,
+                "book_id": entry_object.get("book_id"),
+                "event": entry_object.get("event"),
+                "entry": entry_object.get("entry"),
+                "action_at": entry_object.get("action_at"),
+            }
+            self.journals.append(journal)
+            return {
+                "insert_reading_journal": {
+                    "errors": None,
+                    "id": journal["id"],
+                    "reading_journal": {"id": journal["id"], "entry": journal["entry"]},
+                }
+            }
 
         if "insert_user_book(" in query:
             entry_object = variables.get("object") or {}
@@ -476,11 +628,136 @@ class HardcoverServer(_Server):
                 "edition_id": entry_object.get("edition_id"),
                 "status_id": entry_object.get("status_id", 1),
                 "privacy_setting_id": entry_object.get("privacy_setting_id"),
+                "user_book_reads": [],
             }
             self.library[entry["id"]] = entry
+            # "Setting a library entry's status to Currently Reading (2) starts a read."
+            if entry["status_id"] == CURRENTLY_READING:
+                self._start_read(entry)
             return {"insert_user_book": {"error": None, "user_book": {"id": entry["id"]}}}
 
         return {}
+
+    # -- the library, read the way the documented queries read it ------------
+
+    def _entry_view(self, entry: dict[str, Any], *, query: str) -> dict[str, Any]:
+        """One `user_books` row, with the sub-selections the query actually asked for.
+
+        Gated on what was selected on purpose: a double that volunteered fields the
+        document never asked for would hide a client reading something it did not request.
+        """
+        view: dict[str, Any] = {
+            "id": entry["id"],
+            "status_id": entry.get("status_id", WANT_TO_READ),
+        }
+        if selects(query, "user_book_reads"):
+            if "{_is_null: true}" in query:
+                chosen = [
+                    read
+                    for read in self.reads(entry["id"])
+                    if read.get("finished_at") is None
+                ]
+            else:
+                chosen = self.reads(entry["id"])
+            view["user_book_reads"] = [
+                self._read_view(read, query=query)
+                for read in sorted(chosen, key=lambda r: r["id"], reverse=True)[:1]
+            ]
+        return view
+
+    def _read_view(self, read: dict[str, Any], *, query: str) -> dict[str, Any]:
+        """One `user_book_reads` row, whose edition is the read's own edition."""
+        view: dict[str, Any] = {
+            "id": read["id"],
+            "started_at": read.get("started_at"),
+            "finished_at": read.get("finished_at"),
+            "edition_id": read.get("edition_id"),
+            "progress_pages": read.get("progress_pages"),
+        }
+        if selects(query, "edition"):
+            view["edition"] = {
+                "id": read.get("edition_id"),
+                "pages": self.edition_pages(read.get("edition_id")),
+            }
+        return view
+
+    def _start_read(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """A new `user_book_reads` row, which is what status Currently Reading means."""
+        self._next_read_id += 1
+        read = {
+            "id": self._next_read_id,
+            "started_at": "2025-10-09",
+            "finished_at": None,
+            "edition_id": entry.get("edition_id"),
+            "progress_pages": 0,
+        }
+        entry.setdefault("user_book_reads", []).append(read)
+        return read
+
+    def _find_read(self, read_id: Any) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        for entry in self.library.values():
+            for read in entry.get("user_book_reads") or []:
+                if read["id"] == read_id:
+                    return entry, read
+        return None
+
+    def _update_read(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        """`update_user_book_read`, including the server's own progress-to-end rule."""
+        if self.write_error is not None:
+            return {"error": self.write_error, "user_book_read": None}
+        found = self._find_read(variables.get("id"))
+        if found is None:
+            return {"error": "no such read", "user_book_read": None}
+        entry, read = found
+        entry_object = object_literal(query, variables)
+        if "progress_pages" in entry_object:
+            read["progress_pages"] = entry_object["progress_pages"]
+        if "action_at" in entry_object:
+            read["action_at"] = entry_object["action_at"]
+
+        # "Progress that reaches the end of the edition finishes the read and marks the
+        # book Read" — the server does this, not the client.
+        pages = self.edition_pages(read.get("edition_id"))
+        if pages and (read.get("progress_pages") or 0) >= pages:
+            read["finished_at"] = read.get("finished_at") or "2025-10-09"
+            entry["status_id"] = READ_STATUS
+        return {
+            "error": None,
+            "user_book_read": {
+                "id": read["id"],
+                "progress_pages": read.get("progress_pages"),
+                "started_at": read.get("started_at"),
+                "finished_at": read.get("finished_at"),
+            },
+        }
+
+    def _update_library_entry(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        """`update_user_book`: the status change that starts or finishes a read."""
+        if self.write_error is not None:
+            return {"error": self.write_error, "user_book": None}
+        if self.finish_error is not None:
+            return {"error": self.finish_error, "user_book": None}
+        user_book_id = variables.get("id")
+        entry = self.library.get(user_book_id) if isinstance(user_book_id, int) else None
+        if entry is None:
+            return {"error": "no such user book", "user_book": None}
+        entry_object = object_literal(query, variables)
+        if "status_id" in entry_object:
+            entry["status_id"] = entry_object["status_id"]
+            if entry["status_id"] == READ_STATUS:
+                for read in entry.get("user_book_reads") or []:
+                    if read.get("finished_at") is None:
+                        read["finished_at"] = "2025-10-09"
+            elif entry["status_id"] == CURRENTLY_READING and not [
+                read
+                for read in entry.get("user_book_reads") or []
+                if read.get("finished_at") is None
+            ]:
+                self._start_read(entry)
+        return {
+            "error": None,
+            "user_book": {"id": entry["id"], "status_id": entry["status_id"]},
+        }
 
 
 def _json(payload: Any) -> bytes:
