@@ -33,6 +33,7 @@ deliverable. A later successful run clears it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -55,6 +56,59 @@ class IdentityError(RuntimeError):
     """
 
 
+class HeldError(IdentityError):
+    """There is nothing to match this row by — and that is not a fault.
+
+    Distinct from a service failure on purpose. A held row records **no error**, because
+    "we have not been told which book this is" is not something the owner has to go and
+    fix; the review page is where it waits. Only a refusal from a service is an error.
+    """
+
+
+def _author_key(value: Any) -> str:
+    """A person's name reduced to what makes two spellings the same name.
+
+    Hardcover holds `Jonathan  Wilson` with a doubled space and `Earnest Hemingway` with a
+    typo; the card holds `Jonathan Wilson`. Case and punctuation are not evidence about who
+    wrote a book, so they are not compared.
+    """
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", str(value or "").casefold()).split())
+
+
+def _author_names(value: Any) -> set[str]:
+    """The individual names in a `dc:creator`, which routinely lists several.
+
+    An OPF says `Eric Freeman & Elisabeth Robson & Bert Bates & Kathy Sierra` while
+    Hardcover's record names one contributor per entry, so the comparison is name by name
+    rather than string to string.
+    """
+    parts = re.split(r"&|;|,|\band\b", str(value or ""))
+    return {key for part in parts if (key := _author_key(part))}
+
+
+def confident_candidate(candidates: list[Any], row: Any) -> Any | None:
+    """The first catalog record this row's author agrees with, if it is a real one.
+
+    Two conditions, and both are doing work. **Author agreement** is what excludes the
+    duplicate entries a popular title collects — measured on "The Jinn-Bot of Shantiport",
+    the exact-title match returned five of them and none had an author at all. **A record
+    somebody has read** (`users_count`) excludes the same duplicates from the other side:
+    an entry with the right author and no readers is as likely a stub as the real book.
+
+    Returns None rather than guessing. The caller holds the row, and a wrong match would
+    put immutable sittings on the wrong book.
+    """
+    wanted = _author_names(row["author"])
+    if not wanted:
+        return None
+    for candidate in candidates:
+        if not candidate.users_count:
+            continue
+        if _author_names(candidate.author) & wanted:
+            return candidate
+    return None
+
+
 @dataclass(frozen=True)
 class IdentityReport:
     """What one resolution pass did, in the shape a run log wants to print."""
@@ -72,7 +126,13 @@ def resolve_books(
     retry: RetryPolicy | None = None,
     log: Callable[[str], None] | None = None,
 ) -> IdentityReport:
-    """Match every as-yet-unmatched book that carries an ISBN, per row.
+    """Match every as-yet-unmatched book, per row.
+
+    An ISBN is tried first and is the rule that gets used whenever it works. Without one —
+    or when Hardcover holds no edition carrying it — the owner's rule of 2026-11-02
+    applies: a title match is taken when a catalog record's **author agrees** with the book
+    on the card and that record is one somebody has actually read. Everything else is held
+    for one confirmation in the review page.
 
     `readwise=None` / `hardcover=None` mean that destination is switched off, not that it
     failed — a destination nobody configured must not make rows look broken.
@@ -91,12 +151,6 @@ def resolve_books(
         document = row["document"]
         path = row["book_path"] or document
 
-        if not row["isbn"]:
-            # The design's queue, and deliberately not a lookup: see the module docstring.
-            say(f"{path}: no ISBN — held for confirmation")
-            report.unmatched.append(path)
-            continue
-
         if readwise is None and hardcover is None:
             # Nothing is switched on, so nothing can have matched. Marking the row here
             # would make it deliverable on the strength of a lookup that never ran.
@@ -104,16 +158,24 @@ def resolve_books(
             report.unmatched.append(path)
             continue
 
-        readwise_id, hardcover_id, hardcover_edition_id, failure = _match_with_retries(
-            row, readwise=readwise, hardcover=hardcover, policy=policy, path=path, say=say
-        )
-        if failure is not None:
+        try:
+            (readwise_id, hardcover_id, hardcover_edition_id), matched_by = _match_row(
+                row, readwise=readwise, hardcover=hardcover, policy=policy, path=path, say=say
+            )
+        except HeldError as held:
+            # **Not** an error, and deliberately not recorded as one: nothing has told us
+            # which book this is, and the review page is where it waits. Writing a reason
+            # onto 89 ordinary rows would make the queue look like 89 failures.
+            say(f"{path}: {held}")
+            report.unmatched.append(path)
+            continue
+        except (ReadwiseError, HardcoverError, IdentityError) as exc:
             # Per row, and never fatal to the run. A bad token therefore shows up as one
             # row per book rather than as "resolution did nothing".
-            storage.set_book_error(document, str(failure))
-            report.errors[path] = str(failure)
+            storage.set_book_error(document, str(exc))
+            report.errors[path] = str(exc)
             report.unmatched.append(path)
-            say(f"{path}: {failure}")
+            say(f"{path}: {exc}")
             continue
 
         storage.set_book_identity(
@@ -122,10 +184,11 @@ def resolve_books(
             hardcover_id=hardcover_id,
             hardcover_edition_id=hardcover_edition_id,
             status=AUTO,
+            matched_by=matched_by,
         )
         report.resolved.append(path)
         say(
-            f"{path}: matched"
+            f"{path}: matched by {matched_by}"
             f" (readwise {readwise_id or '—'}, hardcover {hardcover_id or '—'}"
             f"{' / ' + hardcover_edition_id if hardcover_edition_id else ''})"
         )
@@ -133,7 +196,65 @@ def resolve_books(
     return report
 
 
-def _match_with_retries(
+def _attempt(
+    call: Callable[[], tuple[str | None, str | None, str | None]],
+    *,
+    policy: RetryPolicy,
+    path: str,
+    say: Callable[[str], None],
+) -> tuple[str | None, str | None, str | None]:
+    """Run one matching attempt, waiting and trying again while a service says "later".
+
+    Only a **transient** refusal is retried. A 403 scope refusal, or a book Hardcover has
+    no edition for, is the service's answer; asking again would repeat it while taking
+    longer to say so.
+    """
+    for attempt in range(policy.attempts):
+        try:
+            return call()
+        except (ReadwiseError, HardcoverError) as exc:
+            if not exc.transient or attempt == policy.attempts - 1:
+                raise
+            waited = policy.wait_for(attempt)
+            say(f"{path}: {exc} — waiting {waited:g}s, then trying again")
+            policy.pause(attempt)
+    raise IdentityError("retry loop ended without an answer")  # pragma: no cover
+
+
+def _by_isbn(
+    readwise: ReadwiseClient | None, hardcover: HardcoverClient | None, isbn: str
+) -> tuple[str | None, str | None, str | None]:
+    """The ids for a book identified by an ISBN — the confident route."""
+    hardcover_id, hardcover_edition_id = match_hardcover(hardcover, isbn)
+    return match_readwise(readwise, isbn=isbn), hardcover_id, hardcover_edition_id
+
+
+def _by_title_and_author(
+    readwise: ReadwiseClient | None, hardcover: HardcoverClient | None, row: Any
+) -> tuple[str | None, str | None, str | None]:
+    """The ids for a book identified by its title and author — the owner's 2026-11-02 rule.
+
+    Nothing is written to either service until the confidence check has passed. That order
+    is the whole safety property: a wrong match puts immutable sittings on the wrong book,
+    so the search, the author agreement and the "somebody has read it" test all happen
+    before Readwise is asked to add anything.
+    """
+    candidate = confident_candidate(
+        hardcover.find_by_title(row["title"]),  # type: ignore[union-attr]
+        row,
+    )
+    if candidate is None:
+        raise HeldError(
+            "no confident match — held for confirmation"
+        )
+    readwise_id = match_readwise(readwise, isbn=None, title=row["title"], author=row["author"])
+    hardcover.ensure_library_entry(  # type: ignore[union-attr]
+        book_id=candidate.book_id, edition_id=candidate.edition_id
+    )
+    return readwise_id, candidate.book_id, candidate.edition_id
+
+
+def _match_row(
     row: Any,
     *,
     readwise: ReadwiseClient | None,
@@ -141,32 +262,62 @@ def _match_with_retries(
     policy: RetryPolicy,
     path: str,
     say: Callable[[str], None],
-) -> tuple[str | None, str | None, str | None, Exception | None]:
-    """One row's matching, waiting and trying again while a service says "later".
+) -> tuple[tuple[str | None, str | None, str | None], str]:
+    """One row's identity, and which rule found it.
 
-    Returns the ids, or the failure to record — never raises, because one book's refusal
-    must not end the run. Only a **transient** refusal is retried: a 403 scope refusal, or
-    a book Hardcover has no edition for, is the service's answer, and asking again would
-    repeat it while taking longer to say so.
+    By ISBN when the row has one, and by title and author when it does not — or when
+    Hardcover has never heard of that ISBN. Measured on four real rows: the ISBN was right,
+    Hardcover simply held no edition carrying it, and its search finds the book anyway.
+
+    Raises `HeldError` when there is nothing to go on, and the service's own error when a
+    service refused.
     """
-    for attempt in range(policy.attempts):
+    isbn_failure: Exception | None = None
+    if row["isbn"]:
         try:
-            hardcover_id, hardcover_edition_id = match_hardcover(hardcover, row["isbn"])
             return (
-                match_readwise(readwise, isbn=row["isbn"]),
-                hardcover_id,
-                hardcover_edition_id,
-                None,
+                _attempt(
+                    lambda: _by_isbn(readwise, hardcover, row["isbn"]),
+                    policy=policy,
+                    path=path,
+                    say=say,
+                ),
+                "isbn",
             )
-        except (ReadwiseError, HardcoverError) as exc:
-            if not exc.transient or attempt == policy.attempts - 1:
-                return None, None, None, exc
-            waited = policy.wait_for(attempt)
-            say(f"{path}: {exc} — waiting {waited:g}s, then trying again")
-            policy.pause(attempt)
         except IdentityError as exc:
-            return None, None, None, exc
-    return None, None, None, IdentityError("retry loop ended without an answer")
+            # **Only** a definitive "Hardcover has no edition with that ISBN" falls through
+            # to the title. A transient refusal must not: the service is busy, not ignorant,
+            # and the title lookup would fail the same way after a second round of waiting
+            # — measured, that doubled the pauses from [2, 4] to [2, 4, 2, 4].
+            isbn_failure = exc
+
+    if not (row["title"] and row["author"]):
+        raise isbn_failure or HeldError(
+            "no ISBN, and no title and author to fall back on — held for confirmation"
+        )
+    if hardcover is None:
+        # Readwise alone can match a title and an author, but the ids Hardcover issues are
+        # what the review page and the progress write need — half an identity is not one.
+        raise isbn_failure or HeldError(
+            "no ISBN and Hardcover is switched off — held for confirmation"
+        )
+
+    try:
+        return (
+            _attempt(
+                lambda: _by_title_and_author(readwise, hardcover, row),
+                policy=policy,
+                path=path,
+                say=say,
+            ),
+            "title+author",
+        )
+    except HeldError:
+        # Nothing confident. When an ISBN was involved, its own refusal says more than
+        # "no confident match" does, so it is what gets recorded.
+        raise isbn_failure or HeldError(
+            "no ISBN, and no record under that title whose author agrees — held for confirmation"
+        )
 
 
 def confirm_book(

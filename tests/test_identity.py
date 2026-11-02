@@ -143,20 +143,18 @@ def test_the_same_book_is_not_created_twice_by_a_second_run():
 # ---------------------------------------------------------------- criterion 3
 
 
-def test_a_book_with_no_isbn_is_left_unmatched_and_no_service_is_asked_about_it():
-    """Criterion 3: the ambiguous row waits, and nothing is guessed on its behalf.
+def test_a_book_with_no_isbn_whose_author_cannot_be_agreed_is_held_writing_nothing():
+    """Criterion 3, as the owner amended it on 2026-11-02.
 
-    Neither service is asked *about* the book either, because title-and-author matching is
-    the ambiguous kind and the design holds those for the owner. Appearing in the queue is
-    the point; being quietly added somewhere is the failure this avoids.
+    Hardcover's search **is** asked — it is a read, and the confidence rule has nothing to
+    work with otherwise — but nothing is written anywhere. Readwise is never contacted,
+    because its `POST /books` would add the book on a title nobody has verified, and a
+    wrong match puts immutable sittings on the wrong book.
 
-    **The zero-request assertions alone do not pin the guard**, which is worth knowing
-    because it looks like they do. `resolve_books` passes `match_readwise` nothing but the
-    ISBN — deliberately, since a title-and-author lookup is exactly what ruling 1 refuses —
-    so with the guard removed the row *still* makes no request: `match_readwise` refuses it
-    as "no ISBN, no title and no author" and the refusal is caught and reported. Held and
-    failed are the two states that differ, so the assertions that pin the guard are the two
-    at the end: a held row carries no error, and the run's `errors` is empty.
+    Held and failed are different states and that difference is the point: a held row
+    carries no error and the run reports no errors, so 89 ordinary rows do not read as 89
+    failures. The catalog entry here has no author at all, which is what the real duplicates
+    under this title look like.
     """
     storage = Storage(":memory:")
     _no_isbn_row(storage)
@@ -171,8 +169,10 @@ def test_a_book_with_no_isbn_is_left_unmatched_and_no_service_is_asked_about_it(
     assert row["status"] == "unmatched"
     assert row["readwise_id"] is None and row["hardcover_id"] is None
     assert report.unmatched == [GOD_PATH]
+    # Nothing written: Readwise never contacted, and Hardcover only ever asked to search.
     assert rw.requests == [] and rw.creations == []
-    assert hc.queries == []
+    assert hc.queries, "the confidence rule needs the search to have run"
+    assert not [q for q in hc.queries if "insert_user_book" in q or "update_user_book" in q]
     assert [r["book_path"] for r in storage.books_needing_confirmation()] == [GOD_PATH]
     # Held, not refused: the guard is what makes the difference, and it is the only
     # difference, because the failure path refuses the same row for the same reason.
@@ -518,3 +518,149 @@ def test_a_refusal_that_is_not_transient_is_not_retried():
     assert report.errors
     assert slept == []  # nothing was waited out
     assert row["readwise_id"] is None
+
+
+# --------------------- the owner's confidence rule for a book with no ISBN (2026-11-02)
+
+
+#: The real Hardcover record, as the API answers it.
+JINN_RICH = {
+    "id": 770867,
+    "title": "The Jinn-Bot of Shantiport",
+    "author": "Samit Basu",
+    "users_count": 261,
+    "default_ebook_edition_id": 30772692,
+    "editions": [{"id": 30772692, "isbn_13": "9781250827517", "pages": 416}],
+}
+#: A duplicate entry with nothing in it — what the catalog is full of under a popular title.
+JINN_STUB = {"id": 2055472, "title": "The Jinn-Bot of Shantiport", "editions": [{"id": 32238799}]}
+#: The right title, the wrong author.
+JINN_OTHER_AUTHOR = {
+    "id": 4,
+    "title": "The Jinn-Bot of Shantiport",
+    "author": "Someone Else",
+    "users_count": 50,
+    "editions": [{"id": 44}],
+}
+#: The right author, but a record nobody has read — as likely a stub as the real book.
+JINN_NO_READERS = {
+    "id": 5,
+    "title": "The Jinn-Bot of Shantiport",
+    "author": "Samit Basu",
+    "users_count": 0,
+    "editions": [{"id": 55}],
+}
+
+
+def _jinn_without_isbn(storage: Storage, **overrides: object) -> None:
+    """The Jinn-Bot row as the sweep wrote it: a title, an author, no ISBN."""
+    fields: dict[str, object] = {
+        "document": "doc-jinn-bot",
+        "hash_method": "content",
+        "book_path": JINN_PATH,
+        "title": "The Jinn-Bot of Shantiport",
+        "author": "Samit Basu",
+        "isbn": None,
+    }
+    storage.upsert_books([BookRecord(**{**fields, **overrides})])  # type: ignore[arg-type]
+
+
+def test_a_row_with_no_isbn_is_matched_when_the_author_agrees_and_the_record_is_real():
+    """The owner's rule, asked for on 2026-11-02: a title match is taken when the author
+    agrees and the record is one somebody has read. Everything else still waits."""
+    storage = Storage(":memory:")
+    _jinn_without_isbn(storage)
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_STUB, JINN_RICH], library={}) as hc:
+            report = resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    row = _row(storage, "doc-jinn-bot")
+    assert report.resolved == [JINN_PATH]
+    assert row["status"] == "auto"
+    assert row["hardcover_id"] == "770867"
+    assert row["hardcover_edition_id"] == "30772692"
+    assert row["readwise_id"] is not None
+    assert row["matched_by"] == "title+author"
+
+
+def test_the_stub_is_passed_over_for_the_real_record_further_down_the_results():
+    """Search ranks, and the stub has no author at all — so author agreement is what picks."""
+    storage = Storage(":memory:")
+    _jinn_without_isbn(storage)
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_STUB, JINN_OTHER_AUTHOR, JINN_RICH], library={}) as hc:
+            resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    assert _row(storage, "doc-jinn-bot")["hardcover_id"] == "770867"
+
+
+def test_a_row_with_no_isbn_is_held_when_no_record_has_a_matching_author():
+    storage = Storage(":memory:")
+    _jinn_without_isbn(storage)
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_STUB, JINN_OTHER_AUTHOR], library={}) as hc:
+            report = resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+            # Held means *nothing was written anywhere* — not even at Readwise, whose
+            # `POST /books` would have added a book on a title it cannot verify.
+            assert rw.requests == []
+
+    row = _row(storage, "doc-jinn-bot")
+    assert row["status"] == "unmatched"
+    assert row["hardcover_id"] is None
+    assert row["matched_by"] is None
+    assert report.unmatched == [JINN_PATH]
+
+
+def test_a_record_with_the_right_author_but_no_readers_is_held():
+    """An entry nobody has read is as likely a duplicate as the real book."""
+    storage = Storage(":memory:")
+    _jinn_without_isbn(storage)
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_NO_READERS], library={}) as hc:
+            resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    assert _row(storage, "doc-jinn-bot")["status"] == "unmatched"
+
+
+def test_a_row_with_no_author_cannot_be_agreed_with_so_it_is_held():
+    """Two books share a title; without an author there is nothing to agree on."""
+    storage = Storage(":memory:")
+    _jinn_without_isbn(storage, author=None)
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_RICH], library={}) as hc:
+            resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    assert _row(storage, "doc-jinn-bot")["status"] == "unmatched"
+
+
+def test_an_isbn_match_is_still_recorded_as_matched_by_isbn():
+    """The rule that was there first, and stays the preferred one."""
+    storage = Storage(":memory:")
+    _swept(storage)
+
+    with ReadwiseServer(library={JINN_BOT_ISBN: {**JINN_BOT, "isbn": JINN_BOT_ISBN}}) as rw:
+        with HardcoverServer(catalog=[JINN_BOT_HC], library={}) as hc:
+            resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    assert _row(storage, "doc-jinn-bot")["matched_by"] == "isbn"
+
+
+def test_an_isbn_hardcover_has_never_heard_of_falls_back_to_the_title():
+    """Measured on four real rows: the ISBN was right, Hardcover simply had no edition
+    carrying it — and its search finds the book anyway."""
+    storage = Storage(":memory:")
+    _swept(storage, isbn="9780596556563", title="The Jinn-Bot of Shantiport")
+
+    with ReadwiseServer(library={}) as rw:
+        with HardcoverServer(catalog=[JINN_RICH], library={}) as hc:
+            resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    row = _row(storage, "doc-jinn-bot")
+    assert row["status"] == "auto"
+    assert row["hardcover_id"] == "770867"
+    assert row["matched_by"] == "title+author"

@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS books (
     hardcover_edition_id TEXT,
     status         TEXT NOT NULL DEFAULT 'unmatched',
     error          TEXT,
+    -- Which rule identified it: 'isbn' for the confident one, 'title+author' for the
+    -- confidence rule the owner asked for on 2026-11-02. Recorded because a title match
+    -- can be wrong, and a wrong match is not otherwise distinguishable from a right one.
+    matched_by     TEXT,
     first_seen_at  INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
 );
@@ -388,6 +392,7 @@ class Storage:
         hardcover_id: str | None = None,
         hardcover_edition_id: str | None = None,
         status: str = "auto",
+        matched_by: str | None = None,
     ) -> None:
         """Record the ids a service issued, and mark the row matched.
 
@@ -405,6 +410,7 @@ class Storage:
                     hardcover_edition_id = COALESCE(?, hardcover_edition_id),
                     status               = ?,
                     error                = NULL,
+                    matched_by           = COALESCE(?, matched_by),
                     updated_at           = ?
                 WHERE document = ?
                 """,
@@ -413,6 +419,7 @@ class Storage:
                     hardcover_id,
                     hardcover_edition_id,
                     status,
+                    matched_by,
                     int(time.time()),
                     document,
                 ),
@@ -566,6 +573,8 @@ def _migrate(connection: sqlite3.Connection) -> None:
     columns = {row[1] for row in connection.execute("PRAGMA table_info(books)")}
     if "error" not in columns:
         connection.execute("ALTER TABLE books ADD COLUMN error TEXT")
+    if "matched_by" not in columns:
+        connection.execute("ALTER TABLE books ADD COLUMN matched_by TEXT")
 
     session_columns = {
         row[1] for row in connection.execute("PRAGMA table_info(derived_sessions)")
