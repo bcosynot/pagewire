@@ -104,6 +104,14 @@ package that will not build, fails here and not on the box. This step is the one
 environment could not run, so it is the likeliest place for a first-try error in
 `nixos/pagewire.nix` — read the eval error rather than assuming.
 
+**Partly covered by CI now.** `.github/workflows/nix.yml` in the relay repo runs
+`nix flake check` on every push and PR, and the flake's `checks` output evaluates the
+module inside a throwaway system — so a module error shows up on the PR rather than here.
+That covers the first command **in the relay's own flake**. It does **not** cover this
+step: the config repo's flake is a different flake, and
+`nix build .#nixosConfigurations.base-server-lxc…` — the thing criterion 2 actually names
+— lives in `base-server`, which has no CI at all.
+
 Paste both transcripts into `criterion-2-flake-check.txt`.
 
 ## 4. Install the tunables file on the box — NOT YET RUN

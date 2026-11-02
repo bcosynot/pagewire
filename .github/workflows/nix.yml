@@ -1,0 +1,32 @@
+name: Nix flake check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Determinate installer rather than the single-user one: it turns on the
+      # experimental features (`nix-command`, `flakes`) that `nix flake` needs, on a
+      # runner that starts with no /nix at all.
+      - uses: DeterminateSystems/nix-installer-action@v23
+
+      # Keeps the store between runs. A cold check evaluates a whole NixOS
+      # configuration, which means fetching nixpkgs; without a cache every run pays for
+      # that again.
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+
+      # `nix flake check` builds the package, evaluates the devShells, and — through the
+      # `checks` output in flake.nix — evaluates the NixOS module inside a throwaway
+      # system. That last part is why this workflow exists: `nix flake check` on its own
+      # does NOT evaluate `nixosModules`, so without the `checks` output the module this
+      # repository exists to ship would go unchecked by CI entirely.
+      #
+      # Deliberately not `--all-systems`: the aarch64 checks would need emulation on an
+      # x86_64 runner. The aarch64 outputs are still evaluated.
+      - name: nix flake check
+        run: nix flake check -L
