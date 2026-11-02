@@ -93,6 +93,20 @@ class Settings:
     # How often the finalisation sweep looks for sittings that have gone quiet.
     sweep_interval_seconds: int = 60
 
+    # Identity resolution: how hard to argue with a service that answers "later". A rate
+    # limit is the case this exists for — Hardcover's Free plan is 60 requests a minute
+    # and a bulk resolve walks straight into it, which showed up as a 429 on 11 of the
+    # first 15 ISBN-bearing books in the deployed run.
+    identity_retry_attempts: int = 4
+    identity_retry_backoff_seconds: float = 2.0
+    identity_retry_backoff_max_seconds: float = 60.0
+
+    # Minimum spacing between calls to Hardcover, per client. 60 requests a minute is the
+    # Free plan's documented limit and 1.1s sits just under it, so a bulk resolve paces
+    # itself from its first call rather than discovering the ceiling through 429s. This is
+    # the *proactive* half; identity_retry_* above is what happens if it is not enough.
+    hardcover_min_interval_seconds: float = 1.1
+
     # Delivery: how many sittings go in one request (Readwise takes at most 10), and how
     # hard to try when a destination refuses. The backoff doubles from its start value to
     # its maximum, so five attempts at 2s start with a 30-second worst case per batch.
@@ -135,6 +149,18 @@ class Settings:
             device_model=_str(env, "DEVICE_MODEL", cls.device_model),
             timezone=_str(env, "TIMEZONE", cls.timezone),
             sweep_interval_seconds=_int(env, "SWEEP_INTERVAL_SECONDS", cls.sweep_interval_seconds),
+            identity_retry_attempts=_int(
+                env, "IDENTITY_RETRY_ATTEMPTS", cls.identity_retry_attempts
+            ),
+            identity_retry_backoff_seconds=_float(
+                env, "IDENTITY_RETRY_BACKOFF_SECONDS", cls.identity_retry_backoff_seconds
+            ),
+            identity_retry_backoff_max_seconds=_float(
+                env, "IDENTITY_RETRY_BACKOFF_MAX_SECONDS", cls.identity_retry_backoff_max_seconds
+            ),
+            hardcover_min_interval_seconds=_float(
+                env, "HARDCOVER_MIN_INTERVAL_SECONDS", cls.hardcover_min_interval_seconds
+            ),
             delivery_batch_size=_int(env, "DELIVERY_BATCH_SIZE", cls.delivery_batch_size),
             delivery_retry_attempts=_int(
                 env, "DELIVERY_RETRY_ATTEMPTS", cls.delivery_retry_attempts

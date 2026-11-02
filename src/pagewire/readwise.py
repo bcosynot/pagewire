@@ -31,6 +31,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from .retry import RETRYABLE_STATUSES
+
 READWISE_BASE_URL = "https://readwise.io"
 BOOKS_PATH = "/books/api/v1/books"
 SESSIONS_PATH = "/books/api/v1/sessions"
@@ -50,14 +52,24 @@ class ReadwiseError(RuntimeError):
     `status_code` and `code` are kept because they are what the owner needs to see: a 403
     `insufficient_scope` is a token to re-mint, a 401 is a token that is wrong, and a
     connection error is neither.
+
+    `transient` separates "ask again in a moment" from "this is the answer": a 429 or a
+    5xx is worth waiting out, and a 403 or a 401 is not. Callers decide; this client does
+    not retry anything itself.
     """
 
     def __init__(
-        self, message: str, *, status_code: int | None = None, code: str | None = None
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        code: str | None = None,
+        transient: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
+        self.transient = transient
 
 
 @dataclass(frozen=True)
@@ -331,7 +343,12 @@ class ReadwiseClient:
             message += f" ({detail})"
         if body.get("scope"):
             message += f" [needs scope {body['scope']}]"
-        return ReadwiseError(message, status_code=exc.code, code=code)
+        return ReadwiseError(
+            message,
+            status_code=exc.code,
+            code=code,
+            transient=exc.code in RETRYABLE_STATUSES,
+        )
 
 
 def _book(result: dict[str, Any]) -> ReadwiseBook:

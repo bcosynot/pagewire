@@ -34,10 +34,11 @@ deliverable. A later successful run clears it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from .hardcover import HardcoverClient, HardcoverError
 from .readwise import DEFAULT_SHELF, ReadwiseClient, ReadwiseError
+from .retry import RetryPolicy
 from .storage import Storage
 
 # The three states a row's `status` can hold. `unmatched` is the only one delivery refuses.
@@ -68,14 +69,19 @@ def resolve_books(
     *,
     readwise: ReadwiseClient | None = None,
     hardcover: HardcoverClient | None = None,
+    retry: RetryPolicy | None = None,
     log: Callable[[str], None] | None = None,
 ) -> IdentityReport:
     """Match every as-yet-unmatched book that carries an ISBN, per row.
 
     `readwise=None` / `hardcover=None` mean that destination is switched off, not that it
     failed — a destination nobody configured must not make rows look broken.
+
+    `retry` bounds how long a service that answers "later" is argued with. Defaulted so a
+    caller that has no opinion still gets the behaviour the deployed run wants.
     """
     say = log or (lambda _line: None)
+    policy = retry or RetryPolicy()
     report = IdentityReport()
 
     for row in storage.books():
@@ -98,16 +104,16 @@ def resolve_books(
             report.unmatched.append(path)
             continue
 
-        try:
-            readwise_id = match_readwise(readwise, isbn=row["isbn"])
-            hardcover_id, hardcover_edition_id = match_hardcover(hardcover, row["isbn"])
-        except (ReadwiseError, HardcoverError, IdentityError) as exc:
+        readwise_id, hardcover_id, hardcover_edition_id, failure = _match_with_retries(
+            row, readwise=readwise, hardcover=hardcover, policy=policy, path=path, say=say
+        )
+        if failure is not None:
             # Per row, and never fatal to the run. A bad token therefore shows up as one
             # row per book rather than as "resolution did nothing".
-            storage.set_book_error(document, str(exc))
-            report.errors[path] = str(exc)
+            storage.set_book_error(document, str(failure))
+            report.errors[path] = str(failure)
             report.unmatched.append(path)
-            say(f"{path}: {exc}")
+            say(f"{path}: {failure}")
             continue
 
         storage.set_book_identity(
@@ -125,6 +131,42 @@ def resolve_books(
         )
 
     return report
+
+
+def _match_with_retries(
+    row: Any,
+    *,
+    readwise: ReadwiseClient | None,
+    hardcover: HardcoverClient | None,
+    policy: RetryPolicy,
+    path: str,
+    say: Callable[[str], None],
+) -> tuple[str | None, str | None, str | None, Exception | None]:
+    """One row's matching, waiting and trying again while a service says "later".
+
+    Returns the ids, or the failure to record — never raises, because one book's refusal
+    must not end the run. Only a **transient** refusal is retried: a 403 scope refusal, or
+    a book Hardcover has no edition for, is the service's answer, and asking again would
+    repeat it while taking longer to say so.
+    """
+    for attempt in range(policy.attempts):
+        try:
+            hardcover_id, hardcover_edition_id = match_hardcover(hardcover, row["isbn"])
+            return (
+                match_readwise(readwise, isbn=row["isbn"]),
+                hardcover_id,
+                hardcover_edition_id,
+                None,
+            )
+        except (ReadwiseError, HardcoverError) as exc:
+            if not exc.transient or attempt == policy.attempts - 1:
+                return None, None, None, exc
+            waited = policy.wait_for(attempt)
+            say(f"{path}: {exc} — waiting {waited:g}s, then trying again")
+            policy.pause(attempt)
+        except IdentityError as exc:
+            return None, None, None, exc
+    return None, None, None, IdentityError("retry loop ended without an answer")
 
 
 def confirm_book(
@@ -300,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
             settings.hardcover_token,
             endpoint=settings.hardcover_endpoint,
             timeout=settings.service_timeout_seconds,
+            min_interval_seconds=settings.hardcover_min_interval_seconds,
         )
         if settings.hardcover_enabled
         else None
@@ -310,7 +353,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     report = resolve_books(
-        storage, readwise=readwise, hardcover=hardcover, log=lambda line: print(line, flush=True)
+        storage,
+        readwise=readwise,
+        hardcover=hardcover,
+        retry=RetryPolicy(
+            attempts=settings.identity_retry_attempts,
+            backoff_seconds=settings.identity_retry_backoff_seconds,
+            backoff_max_seconds=settings.identity_retry_backoff_max_seconds,
+        ),
+        log=lambda line: print(line, flush=True),
     )
     print(
         f"\n{len(report.resolved)} matched, {len(report.unmatched)} left for confirmation,"

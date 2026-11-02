@@ -17,6 +17,7 @@ import pytest
 from pagewire.hardcover import HardcoverClient
 from pagewire.identity import IdentityError, confirm_book, main, resolve_books
 from pagewire.readwise import ReadwiseClient
+from pagewire.retry import RetryPolicy
 from pagewire.sessions import Sitting
 from pagewire.storage import BookRecord, Storage
 
@@ -427,3 +428,93 @@ def test_the_cli_can_list_the_queue_without_calling_anything(tmp_path, capsys):
     assert code == 0
     assert GOD_PATH in printed
     assert "no edition with ISBN" in printed
+
+
+# ------------------------------------------------- a service that pushes back
+
+
+def test_a_rate_limited_book_is_retried_with_exponential_backoff():
+    """A 429 is the service saying "later", not "no".
+
+    Hardcover's Free tier answers 429 over its per-minute quota, and a bulk resolve walks
+    straight into it. Recording that as a refusal leaves a book that would have matched
+    sitting in the queue for a human to clear by hand.
+    """
+    storage = Storage(":memory:")
+    _swept(storage)
+    slept: list[float] = []
+
+    with HardcoverServer(catalog=[JINN_BOT_HC], library={}) as hc:
+        hc.status_plan = [429, 429]  # two refusals, then the service behaves
+        report = resolve_books(
+            storage,
+            hardcover=_hardcover(hc),
+            retry=RetryPolicy(
+                attempts=4,
+                backoff_seconds=2.0,
+                backoff_max_seconds=60.0,
+                sleep=slept.append,
+            ),
+        )
+
+    row = _row(storage, "doc-jinn-bot")
+    assert report.resolved == [JINN_PATH]
+    assert row["status"] == "auto"
+    assert row["hardcover_id"] == "328491"
+    assert row["error"] is None
+    # Doubling from the configured start, and only between attempts that were refused.
+    assert slept == [2.0, 4.0]
+
+
+def test_a_rate_limit_that_never_clears_is_recorded_once_the_attempts_run_out():
+    """The retry is bounded, and a row that never got through says so on itself."""
+    storage = Storage(":memory:")
+    _swept(storage)
+    slept: list[float] = []
+
+    with HardcoverServer(catalog=[JINN_BOT_HC], library={}) as hc:
+        hc.status_plan = [429] * 10
+        report = resolve_books(
+            storage,
+            hardcover=_hardcover(hc),
+            retry=RetryPolicy(
+                attempts=3,
+                backoff_seconds=2.0,
+                backoff_max_seconds=60.0,
+                sleep=slept.append,
+            ),
+        )
+
+    row = _row(storage, "doc-jinn-bot")
+    assert row["status"] == "unmatched"
+    assert row["hardcover_id"] is None
+    assert "429" in (row["error"] or "")
+    assert report.errors == {JINN_PATH: row["error"]}
+    assert slept == [2.0, 4.0]  # two pauses for three attempts
+    assert len(hc.requests) == 3  # and the third really was the last
+
+
+def test_a_refusal_that_is_not_transient_is_not_retried():
+    """A 403 scope refusal is an answer, not a delay: retrying it only repeats it."""
+    storage = Storage(":memory:")
+    _swept(storage)
+    slept: list[float] = []
+
+    with ReadwiseServer(library={}, write_allowed=False) as rw:
+        report = resolve_books(
+            storage,
+            readwise=_readwise(rw),
+            retry=RetryPolicy(
+                attempts=4,
+                backoff_seconds=2.0,
+                backoff_max_seconds=60.0,
+                sleep=slept.append,
+            ),
+        )
+
+    row = _row(storage, "doc-jinn-bot")
+    assert row["status"] == "unmatched"
+    assert "insufficient_scope" in (row["error"] or "")
+    assert report.errors
+    assert slept == []  # nothing was waited out
+    assert row["readwise_id"] is None

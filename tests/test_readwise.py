@@ -144,3 +144,26 @@ def test_a_service_that_cannot_be_reached_is_an_error_not_an_empty_result():
         ReadwiseClient("rw-token", base_url=f"http://127.0.0.1:{dead}").find_by_isbn(
             "9781915590012"
         )
+
+
+# --------------------------------------------------------- how it refused
+
+
+def test_a_rate_limit_is_marked_transient_so_a_caller_can_choose_to_retry():
+    with ReadwiseServer(library={}) as server:
+        server.status_plan = [429]
+        with pytest.raises(ReadwiseError) as raised:
+            _client(server).find_by_isbn("9781915590012")
+
+    assert raised.value.status_code == 429
+    assert raised.value.transient is True
+
+
+def test_an_insufficient_scope_refusal_is_not_transient():
+    """A token missing its write scope is a 403 every time: an answer, not a delay."""
+    with ReadwiseServer(library={}, write_allowed=False) as server:
+        with pytest.raises(ReadwiseError) as raised:
+            _client(server).add(isbn="9781915590012")
+
+    assert raised.value.status_code == 403
+    assert raised.value.transient is False

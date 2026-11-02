@@ -30,10 +30,13 @@ the start/progress/finish entries and a client that writes one makes it appear t
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
+
+from .retry import RETRYABLE_STATUSES
 
 HARDCOVER_ENDPOINT = "https://api.hardcover.app/v1/graphql"
 
@@ -153,14 +156,26 @@ query BooksByTitle($title: String!, $limit: Int!) {
 
 
 class HardcoverError(RuntimeError):
-    """Hardcover refused the call, reported an error, or could not be reached."""
+    """Hardcover refused the call, reported an error, or could not be reached.
+
+    `transient` is the fact a retry decision needs and the status code alone cannot carry:
+    a 429 is the service asking to be asked again, a 403 is the service saying no. It is
+    read by `retry.RetryPolicy`'s callers, never by this client, which does not retry
+    anything itself.
+    """
 
     def __init__(
-        self, message: str, *, status_code: int | None = None, code: str | None = None
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        code: str | None = None,
+        transient: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
+        self.transient = transient
 
 
 @dataclass(frozen=True)
@@ -209,11 +224,37 @@ class HardcoverClient:
         endpoint: str = HARDCOVER_ENDPOINT,
         timeout: float = 30.0,
         user_agent: str = USER_AGENT,
+        min_interval_seconds: float = 0.0,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.token = token
         self.endpoint = endpoint
         self.timeout = timeout
         self.user_agent = user_agent
+        # Hardcover's Free tier is a per-minute quota, and a bulk resolve is exactly the
+        # shape that trips it. Pacing here rather than in the caller means every request
+        # this client makes is counted, whatever asked for it.
+        self.min_interval_seconds = max(0.0, float(min_interval_seconds))
+        self._clock = clock
+        self._sleep = sleep
+        self._last_call: float | None = None
+
+    def _pace(self) -> None:
+        """Wait long enough that this call is `min_interval_seconds` after the last one.
+
+        Does nothing when no interval is configured, so the default is unthrottled and a
+        test that does not care about pacing never has to know it exists.
+        """
+        if self.min_interval_seconds <= 0:
+            return
+        now = self._clock()
+        if self._last_call is not None:
+            wait = self._last_call + self.min_interval_seconds - now
+            if wait > 0:
+                self._sleep(wait)
+                now = self._clock()
+        self._last_call = now
 
     def resolve_isbn(self, isbn: str) -> HardcoverEdition | None:
         """The book and edition carrying this ISBN, or None when the catalog has neither."""
@@ -352,6 +393,7 @@ class HardcoverClient:
                 "no hardcover token configured; refusing to call Hardcover"
             )
 
+        self._pace()
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps({"query": query, "variables": variables}).encode(),
@@ -410,7 +452,12 @@ class HardcoverClient:
             message += f" ({detail})"
         if body.get("scope"):
             message += f" [needs scope {body['scope']}]"
-        return HardcoverError(message, status_code=exc.code, code=code)
+        return HardcoverError(
+            message,
+            status_code=exc.code,
+            code=code,
+            transient=exc.code in RETRYABLE_STATUSES,
+        )
 
 
 def _int(value: str | int) -> int:

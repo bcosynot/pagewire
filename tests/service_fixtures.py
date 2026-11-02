@@ -93,6 +93,14 @@ class _Server:
 
     _server: ThreadingHTTPServer | None = None
     _thread: threading.Thread | None = None
+    # Declared for the method below only; each double is a dataclass and gives it a real
+    # per-instance list. An annotation rather than an assignment, because a mutable class
+    # attribute would be shared by every instance.
+    status_plan: list[int]
+
+    def _planned_status(self) -> int | None:
+        """The status this request should be answered with instead of handling it."""
+        return self.status_plan.pop(0) if self.status_plan else None
 
     def __enter__(self):
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._make_handler())
@@ -126,6 +134,10 @@ class _Server:
                 parsed = urllib.parse.urlparse(self.path)
                 outer.requests.append(parsed.path)
                 outer.headers.append({k.lower(): v for k, v in self.headers.items()})
+                planned = outer._planned_status()
+                if planned is not None:
+                    self._send(planned, _json({"error": "rate_limited"}))
+                    return
                 code, body = outer.handle_get(parsed.path, urllib.parse.parse_qs(parsed.query))
                 self._send(code, body)
 
@@ -138,6 +150,10 @@ class _Server:
                     payload = json.loads(raw or b"{}")
                 except ValueError:
                     payload = None
+                planned = outer._planned_status()
+                if planned is not None:
+                    self._send(planned, _json({"error": "rate_limited"}))
+                    return
                 code, body = outer.handle_post(
                     urllib.parse.urlparse(self.path).path, payload, self.headers
                 )
@@ -199,6 +215,10 @@ class ReadwiseServer(_Server):
     requests: list[str] = field(default_factory=list)
     headers: list[dict[str, str]] = field(default_factory=list)
     creations: list[dict[str, Any]] = field(default_factory=list)
+    # Status codes to answer with, in order, before the endpoint behaves — consumed by the
+    # next request of any method. How a rate limit is simulated: the service refuses with
+    # 429 until the plan runs out, without a flaky network or a real quota.
+    status_plan: list[int] = field(default_factory=list)
     # Sessions recorded through `POST /sessions`, verbatim, in arrival order. The relay's
     # whole delivery half is about what it puts in these bodies.
     sessions: list[dict[str, Any]] = field(default_factory=list)
@@ -470,6 +490,10 @@ class HardcoverServer(_Server):
     requests: list[str] = field(default_factory=list)
     headers: list[dict[str, str]] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
+    # Status codes to answer with, in order, before the endpoint behaves — consumed by the
+    # next request of any method. How a rate limit is simulated: the service refuses with
+    # 429 until the plan runs out, without a flaky network or a real quota.
+    status_plan: list[int] = field(default_factory=list)
     # The variables each query arrived with, so a test can read the request log the way
     # the owner would: which mutation, with which numbers.
     variables: list[dict[str, Any]] = field(default_factory=list)

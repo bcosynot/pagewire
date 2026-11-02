@@ -194,3 +194,70 @@ def test_a_service_that_cannot_be_reached_is_an_error_not_an_empty_result():
         HardcoverClient("hc-token", endpoint=f"http://127.0.0.1:{dead}/v1/graphql").resolve_isbn(
             "9781915590012"
         )
+
+
+# ------------------------------------------------------ being a good citizen
+
+
+def test_the_client_spaces_its_calls_by_its_minimum_interval():
+    """Hardcover's Free tier is a per-minute quota, so the relay paces itself from the
+    first call rather than discovering the limit through a 429."""
+    now = [100.0]
+    slept: list[float] = []
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        now[0] += seconds
+
+    with HardcoverServer(catalog=[JINN_BOT]) as server:
+        client = HardcoverClient(
+            "hc-token",
+            endpoint=f"{server.address}/v1/graphql",
+            min_interval_seconds=1.5,
+            clock=clock,
+            sleep=sleep,
+        )
+        client.resolve_isbn("9781915590012")
+        client.resolve_isbn("9781915590012")
+        client.resolve_isbn("9781915590012")
+
+    # The first call goes straight out; each later one waits out the interval.
+    assert slept == [1.5, 1.5]
+
+
+def test_no_pacing_at_all_by_default():
+    """Pacing is a tunable, not a surprise: with no interval nothing is ever waited out."""
+    slept: list[float] = []
+
+    with HardcoverServer(catalog=[JINN_BOT]) as server:
+        client = HardcoverClient(
+            "hc-token", endpoint=f"{server.address}/v1/graphql", sleep=slept.append
+        )
+        client.resolve_isbn("9781915590012")
+        client.resolve_isbn("9781915590012")
+
+    assert slept == []
+
+
+def test_a_rate_limit_is_marked_transient_so_a_caller_can_choose_to_retry():
+    """`transient` is the fact a retry decision needs, and the client is where it is known:
+    the status code alone cannot say whether waiting would have helped."""
+    with HardcoverServer(catalog=[JINN_BOT]) as server:
+        server.status_plan = [429]
+        with pytest.raises(HardcoverError) as raised:
+            _client(server).resolve_isbn("9781915590012")
+
+    assert raised.value.status_code == 429
+    assert raised.value.transient is True
+
+
+def test_a_graphql_error_is_not_marked_transient():
+    """A typo in a document comes back the same way every time, so retrying repeats it."""
+    with HardcoverServer(catalog=[JINN_BOT], graphql_errors=["field 'nope' not found"]) as server:
+        with pytest.raises(HardcoverError) as raised:
+            _client(server).resolve_isbn("9781915590012")
+
+    assert raised.value.transient is False
