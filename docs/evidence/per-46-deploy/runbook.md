@@ -113,37 +113,41 @@ package that will not build, fails here and not on the box. This step is the one
 environment could not run, so it is the likeliest place for a first-try error in
 `nixos/pagewire.nix` — read the eval error rather than assuming.
 
-**Partly covered by CI, and the covered half is the one that was unproven.** The relay repo's
-`nix flake check` (`.github/workflows/nix.yml`) evaluates *and builds* the module inside a
-throwaway system — its first run reported
-`✅ checks.x86_64-linux.pagewire-module-evaluates` while building
-`nixos-system-nixos-26.11.20261101.0bb2eed.drv`. So a module error would show up on the PR
-rather than here. That is still the **relay's own flake**, not this step: the config repo's
-flake is a different one, and `nix build .#nixosConfigurations.base-server-lxc…` — the thing
-criterion 2 actually names — lives in `base-server`, which has no CI at all. What is left
-unproven here is the config-repo eval and the toplevel build *for the real box's
-configuration*, not the module. Evidence: `criterion-2-ci.txt`.
+**This step is now largely done by CI, on both flakes.** The relay repo's
+`.github/workflows/nix.yml` evaluates *and builds* the module inside a throwaway system
+(`✅ checks.x86_64-linux.pagewire-module-evaluates`), and the config repo's own CI now runs
+the two commands above against the real `base-server-lxc` configuration. As of `base-server`
+`2e95e7f` both steps are **green**, and the log shows the relay's own units being realized:
 
-**And the config repo now has that CI too — where it immediately went red for two
-pre-existing reasons.** Running the same job against `base-server` found, first, that
-`pagewire.url = "github:bcosynot/pagewire"` resolves to the relay's **default branch**, which
-does not carry `flake.nix` until the relay's PR lands (an ordering constraint, not a defect);
-and second, and far more important, that the configuration **does not evaluate against
-current nixpkgs at all**:
+    building '/nix/store/…-unit-pagewire-sweep.service.drv'...
+    building '/nix/store/…-unit-pagewire.service.drv'...
+    building '/nix/store/…-nixos-system-unnamed-lxc-proxmox-26.11.20260802.0744b52.drv'...
 
-    error: Failed assertions:
-    - The option definition `services.unit' in `…/flake.nix' no longer has any effect;
-      please remove it.
-      services.unit has been removed together with pkgs.unit.
+So `nix build .#nixosConfigurations.base-server-lxc…` — the command this criterion names —
+**passes**, with the relay inside it. Three things had to be fixed to get there, all
+pre-existing and none of them in `nixos/pagewire.nix`:
 
-NGINX Unit is gone from nixpkgs and this repo's `webServer` module still sets it. Because
-the repo commits **no `flake.lock`**, CI resolves current nixpkgs; the box only evaluates
-because it pins an older nixpkgs in a lock the repo does not track. So criterion 2 cannot be
-satisfied as written until either a lock is committed or the module migrates off Unit — and
-that is the owner's call, not this ticket's. Full transcript and reasoning:
-`criterion-2-base-server-ci.txt`.
+1. The input resolved to the relay's **default branch**, which carried no `flake.nix` until
+   the relay's own PR landed. Fixed by that merge.
+2. The configuration **did not evaluate against current nixpkgs at all** — `services.unit`
+   has been removed from nixpkgs and `webServer` still sets it. The repo committed **no
+   `flake.lock`**, so it had never been evaluated against a nixpkgs it pins. Fixed by
+   committing a lock pinning nixpkgs to **0744b52**, the revision the box reports running and
+   one where `services.unit` still exists. That is the conservative half of the choice; the
+   other half — migrating `webServer` off NGINX Unit, which the box still runs — is the
+   owner's, and is what would let the repo follow current nixpkgs again.
+3. **`nix flake check` still does not pass**, for a third pre-existing reason:
+   `nixosConfigurations.base-server` (the aarch64 one, **not** the LXC target) imports
+   `./configuration.nix`, which has never existed on any branch and is not gitignored. That
+   step is therefore `continue-on-error` in the workflow, so the failure stays visible in the
+   annotations without blocking. **Criterion 2 is thus half met: `nix build` succeeds,
+   `nix flake check` does not.** Removing that dead configuration, or adding the file it
+   wants, is the owner's call.
 
-Paste both transcripts into `criterion-2-flake-check.txt`.
+Evidence: `criterion-2-base-server-ci.txt` (config repo) and `criterion-2-ci.txt` (relay
+repo).
+
+Paste the CI run URLs into `criterion-2-flake-check.txt`.
 
 ## 4. Install the tunables file on the box — NOT YET RUN
 

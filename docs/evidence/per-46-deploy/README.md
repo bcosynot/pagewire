@@ -6,7 +6,7 @@ What each file here is, and what it measured.
 |---|---|
 | `runbook.md` | The eight steps a machine with `nix` and access to the box runs, each naming the criterion it closes. **NOT YET RUN** — see its opening. |
 | `criterion-2-ci.txt` | The relay's own `nix flake check` in CI: the module evaluated and its throwaway system built (`✅ checks.x86_64-linux.pagewire-module-evaluates`). Not criterion 2 as written, but it closes the "nothing has ever evaluated the module" gap. Captured from the run at `db89266`. |
-| `criterion-2-base-server-ci.txt` | Adding the same CI to the **config** repo: it found two pre-existing blockers — the input resolving to a default branch with no flake, and `services.unit` having been removed from nixpkgs while the config still sets it. Neither is caused by the pagewire wiring. |
+| `criterion-2-base-server-ci.txt` | Criterion 1 **and** criterion 2's build half, on the config repo: its CI evaluates *and builds* the real `base-server-lxc` with the relay inside it — green at `2e95e7f` — after fixing three pre-existing defects. Also records why `nix flake check` alone still does not pass. |
 | `criterion-6-shipped-tunables.txt` | Criterion 6's offline half: the shipped `deploy/pagewire.env.example` beside the test that pins it to `config.py`. Generated on this tree. |
 
 There is no generator script here, deliberately: the only artifact this session could
@@ -27,5 +27,6 @@ Every criterion except 6's offline half needs something this environment does no
 `nix` is absent and the filesystem has ~4.5 GiB free — not enough to install nix and
 evaluate a NixOS system — so those are the runbook's steps and not this session's claims.
 The one piece of that which has since been closed is the largest one: the module **is** now
-evaluated, because the relay's own CI does it (`criterion-2-ci.txt`). What remains
-unevaluated is the **config repo's** flake and the box's real configuration.
+evaluated, because the relay's own CI does it (`criterion-2-ci.txt`) — and so is the **config
+repo's** real `base-server-lxc` configuration, which its own new CI both evaluates and builds
+(`criterion-2-base-server-ci.txt`). What remains untouched is the box itself.

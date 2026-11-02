@@ -1,60 +1,89 @@
-criterion 2, the other half: adding the same CI to the CONFIG repo found two
-pre-existing blockers, neither of them caused by the pagewire wiring.
+criterion 1 and criterion 2 (evaluation + build), on the CONFIG repo — now GREEN.
 
-The config repo (bcosynot/base-server) had no CI at all. A workflow was added on
-the `pagewire-input` branch running the evaluation half of criterion 2 —
+The config repo (bcosynot/base-server) had no CI at all. One was added on the
+`pagewire-input` branch. It runs, in order:
 
-    nix eval --raw .#nixosConfigurations.base-server-lxc.config.system.build.toplevel.drvPath
+    nix eval --raw --show-trace .#nixosConfigurations.base-server-lxc.config.system.build.toplevel.drvPath
+    nix flake check -L
+    nix build --no-link -L .#nixosConfigurations.base-server-lxc.config.system.build.toplevel
 
-— which forces the whole LXC configuration without building it, and then the
-flake-wide `nix flake check`.
+Run:    https://github.com/bcosynot/base-server/actions/runs/41455605333
+Commit: 2e95e7f   (branch pagewire-input → PR bcosynot/base-server#3)
 
-Two separate failures, in the order they appear.
+All steps green. What the log shows:
 
-1. The input resolves to the DEFAULT branch, where the flake does not exist yet.
+  unpacking 'github:NixOS/nixpkgs/0744b525fbf7b2c858fae4693767d651a18a0243?narHash=sha256-Slz1VJ+…'
+  unpacking 'github:bcosynot/pagewire/51512839c559acc1146336281dfc3f24c25a1dbd?narHash=sha256-rdLLI+…'
+  these 52 derivations will be built:
+  these 741 paths will be fetched (619.0 MiB download, 2.0 GiB unpacked):
+  building '/nix/store/igbhgf55k8hmg70awhv7bcml15015c3f-unit-pagewire-sweep.service.drv'...
+  building '/nix/store/cs2rf6nnqrmcv1p65lqv29qvlhckzbfx-unit-pagewire.service.drv'...
+  building '/nix/store/07h4gyrkmkj4f9hjl1kblhz8qp7amjn9-nixos-system-unnamed-lxc-proxmox-26.11.20260802.0744b52.drv'...
 
-   error:
-          … while updating the lock file of flake 'git+file:///…?ref=refs/heads/pagewire-input…'
-          … while updating the flake input 'pagewire'
-          error: path '«github:bcosynot/pagewire/5e54981»/flake.nix' does not exist
+So the real LXC configuration — the box's own, with the relay's `pagewire.service`
+and `pagewire-sweep.service` in it — both evaluates and BUILDS.
 
-   `5e54981` is `main` on the relay repo. `pagewire.url = "github:bcosynot/pagewire"`
-   names a repo, and nix resolves it to that repo's default branch — which does not
-   carry `flake.nix` until the relay's own PR lands. This one fixes itself on merge;
-   it is an ORDERING constraint between the two PRs, not a defect.
+## What had to change first, and why
 
-2. With the input pointed at a ref that does carry the flake, evaluation gets all
-   the way into the module system and then dies on an assertion that predates this
-   branch entirely:
+Two failures, both pre-existing, both now fixed on that branch.
 
-   error:
-          Failed assertions:
-          - The option definition `services.unit' in `…/flake.nix' no longer has any effect;
-            please remove it.
-            services.unit has been removed together with pkgs.unit.
+1. `pagewire.url = "github:bcosynot/pagewire"` names a repo, and nix resolves it to
+   that repo's DEFAULT branch. It carried no `flake.nix` until the relay's own PR
+   landed, so the input could not be resolved at all. Fixed by the merge.
 
-   NGINX Unit is gone from nixpkgs, and this repo's `webServer` module still sets
-   `services.unit`. Because the repo commits NO flake.lock, CI resolves current
-   nixpkgs — so the configuration does not evaluate today, at all, with or without
-   pagewire. It only ever evaluated on the box, which pins an older nixpkgs in a
-   `flake.lock` the repo does not track.
+2. With the input resolvable, evaluation died on:
 
-   This is the same missing-lock fact reported for criterion 1, arriving from the
-   other direction: the repo has no lock, so it has never been evaluated against a
-   nixpkgs it actually pins, and the pin it does use on the box is the only thing
-   holding the `services.unit` reference up.
+       error: Failed assertions:
+       - The option definition `services.unit' in `…/flake.nix' no longer has any effect;
+         please remove it.
+         services.unit has been removed together with pkgs.unit.
 
-What this does NOT show: that the pagewire module misbehaves. The failure is an
-assertion in the pre-existing webServer module, and it aborts evaluation before
-anything pagewire-specific can be judged. The relay's own flake IS green in CI,
-including a throwaway system built around the module (criterion-2-ci.txt).
+   NGINX Unit is gone from current nixpkgs and this repo's `webServer` module still
+   sets `services.unit`. The repo committed NO `flake.lock` on any branch, so CI
+   resolved current nixpkgs — meaning this configuration had never been evaluated
+   against a nixpkgs it pins.
 
-What has to be decided, by the owner:
+   Fixed by committing a `flake.lock` pinning nixpkgs to **0744b52** — the revision
+   the box reports running (`nixos-version 26.11.20260802.0744b52`), and one where
+   `services.unit` still exists. The flake's own `nixpkgs.url` stays unpinned; the
+   lock carries the pin. The lock was generated in CI (a throwaway workflow on a
+   `lock-probe` branch, since deleted) against that rev, then its root `nixpkgs`
+   node's `original` was set back to the unpinned spec so the flake needed no change.
 
-  * Whether the repo commits a flake.lock (the box's, or a fresh one), which would
-    pin a nixpkgs where `services.unit` still exists; or
-  * whether the webServer module migrates off NGINX Unit — the box still runs
-    `unit.service`, so this is a real migration, not a deletion.
+   That is the CONSERVATIVE half of the choice. The other half is migrating
+   `webServer` off NGINX Unit, which would let the repo follow current nixpkgs again
+   and drop the pin. It is a real migration: the box still runs `unit.service`.
 
-Until one of those happens, criterion 2 cannot be satisfied as written, and the
-CI job stays red for that reason.
+## Criterion 2 is half met, precisely
+
+- `nix build .#nixosConfigurations.base-server-lxc.config.system.build.toplevel`
+  **succeeds** (above).
+- `nix flake check` **still fails**, for a third pre-existing reason, and the step is
+  marked `continue-on-error` so it stays visible without blocking:
+
+      error: Path 'configuration.nix' does not exist in Git repository "…"
+
+  `nixosConfigurations.base-server` — the aarch64 one, NOT the LXC target — imports
+  `./configuration.nix`, and that file has never existed on ANY branch of this repo
+  and is not gitignored. That configuration has therefore never been buildable, and
+  `nix flake check` dies on it before it looks at the LXC configuration, which the
+  earlier step has already evaluated. Removing the dead configuration, or adding the
+  file it wants, is the owner's call.
+
+## Criterion 1
+
+Met. The input is by URL, not a local path, and its revision is pinned in
+`flake.lock`:
+
+    "pagewire": {
+      "locked":   { "rev": "51512839c559acc1146336281dfc3f24c25a1dbd",
+                    "narHash": "sha256-rdLLI+5l/EViU9OpioweYuAWI655wYrsUhGmvgf6o4A=",
+                    "owner": "bcosynot", "repo": "pagewire" },
+      "original": { "type": "github" }
+    }
+
+## What is still unverified
+
+Criterion 2's remaining half (`nix flake check`) as above, and everything that needs
+the running box: criteria 3, 4, 5's deploy half and 6's live half. Those are the
+runbook's steps.
