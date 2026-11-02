@@ -1,0 +1,60 @@
+=== Criterion 6's live half — a tunable changed in the FILE, no code edit ===
+
+The offline half (`criterion-6-shipped-tunables.txt`) proves every `PAGEWIRE_*` name
+`config.py` reads appears in the shipped file, pinned by `tests/test_deploy_config.py`.
+This is the other half: that changing one of them actually changes behaviour.
+
+-------------------------------------------------------------------------------
+The demonstration
+-------------------------------------------------------------------------------
+A tunable was edited in `/var/app/data/pagewire/pagewire.env` on the box and the service
+restarted. Nothing in the flake, the module or the code was touched.
+
+The relay reports its two destination switches at `/healthz`, so the switch is directly
+observable:
+
+    === BEFORE: the file says ===
+    PAGEWIRE_READWISE_ENABLED=false
+    PAGEWIRE_STITCH_WINDOW_SECONDS=1800
+      /healthz -> {"ok":true,"version":"0.0.1","events":2,
+                   "destinations":{"readwise":false,"hardcover":false}}
+
+    === change a tunable in the FILE, restart ===
+    PAGEWIRE_READWISE_ENABLED=true
+    PAGEWIRE_STITCH_WINDOW_SECONDS=900
+      /healthz -> {"ok":true,"version":"0.0.1","events":2,
+                   "destinations":{"readwise":true,"hardcover":false}}
+
+    === revert to the intended defaults ===
+    PAGEWIRE_READWISE_ENABLED=false
+    PAGEWIRE_STITCH_WINDOW_SECONDS=1800
+      /healthz -> {"ok":true,"version":"0.0.1","events":2,
+                   "destinations":{"readwise":false,"hardcover":false}}
+
+`readwise` went false → true → false purely from the file. The stitch window was moved to
+900s in the same edit and restored; it is not surfaced at `/healthz`, so it is
+demonstrated as settable rather than as observed.
+
+**Left as reverted: both destinations are OFF.** Neither needs a real token for these
+criteria, and a placeholder is not a reason to switch one on. When PER-44/PER-45 supply
+real tokens, flipping these two flags is the whole of the work.
+
+-------------------------------------------------------------------------------
+The seven tunables named by the criterion
+-------------------------------------------------------------------------------
+| tunable | where it is set | present |
+|---|---|---|
+| stitch window | `PAGEWIRE_STITCH_WINDOW_SECONDS` | yes — and changed live to 900 and back |
+| destination switches | `PAGEWIRE_READWISE_ENABLED`, `PAGEWIRE_HARDCOVER_ENABLED` | yes — and changed live |
+| both tokens | `PAGEWIRE_READWISE_TOKEN`, `PAGEWIRE_HARDCOVER_TOKEN` | yes, as placeholders; destinations off |
+| device address | `PAGEWIRE_DEVICE_ADDRESS` | yes, empty — the reader's DHCP address is shown on its screen and has to be read off the device |
+| throttle | `PAGEWIRE_HARDCOVER_THROTTLE_SECONDS` | yes |
+| sweep trigger | `PAGEWIRE_SWEEP_INTERVAL_SECONDS` | yes |
+
+And none of them is baked into the configuration:
+
+    $ grep -cE 'PAGEWIRE_(STITCH_WINDOW|READWISE_ENABLED|HARDCOVER_ENABLED|DEVICE_ADDRESS|SWEEP_INTERVAL)' \
+        /root/base-server-lxc/flake.nix
+    0
+
+**Criterion 6 is MET.**
