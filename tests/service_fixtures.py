@@ -53,6 +53,34 @@ def top_level_fields(query: str) -> list[str]:
     return fields
 
 
+#: Column -> the GraphQL type its variable must declare. Hasura refuses a variable whose
+#: declared type is not the column's, *before* it runs anything.
+#:
+#: Measured against the live API on 2026-11-02: `$actionAt: String` feeding `action_at`
+#: fails with "variable 'actionAt' is declared as 'String', but used where 'timestamptz' is
+#: expected", while `timestamptz` is accepted. The double used to type nothing at all, so a
+#: document that the real server rejects passed every test here — which is how a broken
+#: progress write reached a live account before anybody saw it.
+REQUIRED_TYPES = {"action_at": "timestamptz"}
+
+
+def declared_type_mismatch(query: str) -> str | None:
+    """The refusal Hasura would answer with, or None when every declared type fits."""
+    declarations = dict(re.findall(r"\$(\w+)\s*:\s*([\[\]!\w]+)", query))
+    for field, expected in REQUIRED_TYPES.items():
+        used = re.search(rf"\b{field}\s*:\s*\$(\w+)", query)
+        if used is None:
+            continue
+        name = used.group(1)
+        declared = declarations.get(name, "")
+        if declared.rstrip("!") != expected:
+            return (
+                f"variable '{name}' is declared as '{declared}', "
+                f"but used where '{expected}' is expected"
+            )
+    return None
+
+
 def normalise_title(value: str) -> str:
     """How Hardcover's search compares titles: case and punctuation do not matter.
 
@@ -583,6 +611,13 @@ class HardcoverServer(_Server):
                     "error_description": "token is missing a scope this request needs",
                     "scope": "write:library" if needs_write else "read:library",
                 }
+            )
+
+        mismatch = declared_type_mismatch(query)
+        if mismatch is not None:
+            # Type-checked before anything runs, exactly as Hasura does it.
+            return 200, _json(
+                {"errors": [{"message": mismatch, "extensions": {"code": "validation-failed"}}]}
             )
 
         if self.graphql_errors:

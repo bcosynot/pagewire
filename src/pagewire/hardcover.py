@@ -98,9 +98,13 @@ query ReadInProgress($bookId: Int!, $editionId: Int!) {
 
 # The object is written inline rather than as a typed variable, which is the shape both the
 # guide and autoCalibre-Web's working client use: the input type's name is not documented,
-# and `action_at` is dated back to when the reading happened.
+# and `action_at` is dated back to when the reading happened. Its type is `timestamptz`,
+# not `String`: Hasura type-checks a variable against the column before running anything and
+# refuses a mismatch outright — "variable 'actionAt' is declared as 'String', but used where
+# 'timestamptz' is expected". Measured against the live API on 2026-11-02, after this had
+# been declared `String` and every test had passed against a double that typed nothing.
 UPDATE_READ_PROGRESS = """
-mutation UpdateReadProgress($id: Int!, $pages: Int, $actionAt: String) {
+mutation UpdateReadProgress($id: Int!, $pages: Int, $actionAt: timestamptz) {
   update_user_book_read(id: $id, object: {
     progress_pages: $pages,
     action_at: $actionAt
