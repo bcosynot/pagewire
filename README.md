@@ -16,13 +16,14 @@ The two complaints that started this:
 
 ## Status
 
-Building. Seven of the epic's ten children are built — the relay's ingest, derivation,
-identification, identity and Readwise-delivery layers — and the device-side path is
-verified on real hardware. **No live delivery has been made to either service yet**: the
-delivery code exists and is tested against servers speaking the documented shapes, but no
-Readwise token has been used against a real account. The steps that close that gap are in
-[`docs/evidence/per-44-delivery/runbook.md`](docs/evidence/per-44-delivery/runbook.md), so
-the two complaints above still stand until they are run.
+Building. Eight of the epic's ten children are built — the relay's ingest, derivation,
+identification, identity and both delivery layers — and the device-side path is verified on
+real hardware. **No live delivery has been made to either service yet**: the delivery code
+exists and is tested against servers speaking the documented shapes, but neither a Readwise
+nor a Hardcover token has been used against a real account. The steps that close that gap are
+in [`docs/evidence/per-44-delivery/runbook.md`](docs/evidence/per-44-delivery/runbook.md) and
+[`docs/evidence/per-45-delivery/runbook.md`](docs/evidence/per-45-delivery/runbook.md), so the
+two complaints above still stand until they are run.
 
 Merged so far:
 
@@ -40,11 +41,14 @@ Merged so far:
   posted as `ebook` sessions with the device's own positions and pause, recorded once
   thanks to the send log, retried with backoff, and a book that reaches 100 % is moved to
   `finished` with the date. Not yet run against a live account.
+- **Hardcover progress delivery** (`PER-45`) — the same sittings become a page on the read
+  in progress, mapped through the edition (`round(pages × end_bp ÷ 10000)`) and dated to when
+  the reading stopped, one write a minute per book, and a book the device finished is marked
+  Read. No journal entry is ever written, because Hardcover's server writes those itself.
 - **The device spike** (`PER-39`) — the event path, the drain behaviour and the
   document hash all confirmed against hardware.
 
-Next: delivery to Hardcover (`PER-45`), then deploy (`PER-46`) and the end-to-end check on
-the device (`PER-47`).
+Next: deploy (`PER-46`) and the end-to-end check on the device (`PER-47`).
 
 The design of record is
 [`docs/superpowers/specs/2026-10-31-pagewire-design.md`](docs/superpowers/specs/2026-10-31-pagewire-design.md),

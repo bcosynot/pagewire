@@ -1,0 +1,11 @@
+the book the device reported finished (end_percent 100)
+  page written:      448 of 448
+  entry status_id:   3 (3 = Read)
+  read finished_at:  2025-10-09
+  the relay also sent:
+      update_user_book       user_book=7001  status_id=3
+
+report.finished: ['670108835427962c46d53ea3cc1fd5cf']
+
+notes: the status change addresses the library entry, not the read — the guide is explicit that the server keeps the two in step, and that progress reaching the edition's last page finishes the read on its own.
+a 99 % sitting is a different book; see criterion-2-99-percent.txt

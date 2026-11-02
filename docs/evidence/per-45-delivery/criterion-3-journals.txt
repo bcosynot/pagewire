@@ -1,0 +1,8 @@
+reading_journals rows before the delivery: 0
+reading_journals rows after the delivery:  0
+journal mutations the relay sent:          0
+
+progress writes that did land: 1
+status changes that did land:  1
+
+notes: the double is able to record a journal row — `insert_reading_journal` is implemented in it and answers with an id — so its emptiness is evidence rather than a property of the fixture. The guide: "starting, progress and finishing each get a journal entry; don't write those entries yourself, or they'll appear twice".

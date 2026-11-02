@@ -1,0 +1,34 @@
+the two sittings the relay derived first
+  started_at:      [1760000000, 1760000210] — 210s apart
+  the gap between them (end of the first to the start of the second): 30s, inside a minute
+  end_progress_bp: 4470 then 5200
+
+run one, both sittings pending
+  progress writes: 1
+  written:         [('670108835427962c46d53ea3cc1fd5cf', 1760000000), ('670108835427962c46d53ea3cc1fd5cf', 1760000210)]
+  superseded:      [('670108835427962c46d53ea3cc1fd5cf', 1760000000)] (the further sitting's page is the one that stands)
+  page sent:       233 (round(448 x 5200 / 10000)), the 4470 sitting's 200 was superseded
+  derived rows still in the local record: 2 [1760000000, 1760000210]
+
+run two, 30s after that write, with a third sitting now due
+  progress writes: 1
+  books held back: ['670108835427962c46d53ea3cc1fd5cf']
+  written:         []
+  the third sitting: still pending, nothing dropped
+
+run three, 61s after the write — past the window
+  progress writes: 2
+  written:         [('670108835427962c46d53ea3cc1fd5cf', 1760000420)]
+  books held back: []
+  page sent:       273 (round(448 x 6100 / 10000))
+
+request log, in order:
+2 mutation(s), in order:
+  update_user_book_read  read=90001  progress_pages=233  action_at=2025-10-09T04:59:50-04:00
+  update_user_book_read  read=90001  progress_pages=273  action_at=2025-10-09T05:03:20-04:00
+
+
+notes: the throttle reads the ledger's own record of when a write landed, so a
+run that failed to write does not hold the next one back. It is per book, and it
+defers rather than drops — the held sitting keeps its derived row and is written
+on the run that follows the window.
