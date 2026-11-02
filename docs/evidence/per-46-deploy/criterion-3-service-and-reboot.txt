@@ -1,0 +1,86 @@
+=== Criterion 3 — the service is active after `nixos-rebuild switch`, and comes back after a reboot ===
+
+Executed on the box 2026-11-02 by the agent, at the owner's instruction.
+Reaching the box: `ssh -F ~/.ssh/config pve exec 99999 -- /bin/sh`, with
+`export PATH=/run/current-system/sw/bin:/run/wrappers/bin:$PATH` first.
+
+The step that was missing before this run — and the reason the earlier switch exited 4
+— is the tunables file. It is now installed:
+
+    -rw------- 1 pagewire pagewire 4889 Nov  2 18:38 /var/app/data/pagewire/pagewire.env
+
+mode 600, owned by `pagewire`, 91 lines, built from `deploy/pagewire.env.example` with
+`PAGEWIRE_TOKEN` set to the value from the spike's `token.json` (the same file `make
+deploy` copies to the SD card, so the device already agrees — verified by sha256 of the
+token on both sides, not by eye).
+
+`PAGEWIRE_READWISE_ENABLED` and `PAGEWIRE_HARDCOVER_ENABLED` are `false`. Neither
+destination needs a real token for this criterion, and none was invented: the
+placeholder `REPLACE_WITH_A_…` values in the shipped example are left as they are,
+because with both switches off no request reaches either service.
+
+-------------------------------------------------------------------------------
+The switch, now that the file exists
+-------------------------------------------------------------------------------
+    $ nixos-rebuild switch --flake /root/base-server-lxc#base-server-lxc
+    restarting sysinit-reactivation.target
+    the following new units were started: sysinit-reactivation.target, systemd-tmpfiles-resetup.service
+    finished switching to system configuration
+      /nix/store/i2snkm8g2gjil3h0wqihai1iil4zfj4k-nixos-system-unnamed-lxc-proxmox-26.11.20261102.a79b57f
+    Done. The new configuration is
+      /nix/store/i2snkm8g2gjil3h0wqihai1iil4zfj4k-nixos-system-unnamed-lxc-proxmox-26.11.20261102.a79b57f
+    SWITCH_EXIT=0
+
+The preceding attempt, without the file, exited 4 with
+`pagewire-sweep.service: Failed to load environment files: No such file or directory`.
+That failure was recorded rather than papered over, and no placeholder file was created
+to silence it.
+
+    $ systemctl is-active pagewire.service pagewire-sweep.service pagewire-sweep.timer
+    active
+    inactive
+    active
+
+    $ systemctl status pagewire.service
+    ● pagewire.service - Pagewire relay — e-reader ingest and identity review
+         Loaded: loaded (/etc/systemd/system/pagewire.service; enabled; preset: ignored)
+         Active: active (running) since Mon 2026-11-02 18:38:32 UTC; 3s ago
+       Main PID: 903 (.pagewire-serve)
+          Tasks: 1 (limit: 7822)
+         Memory: 53M (peak: 53.5M)
+
+    $ systemctl list-timers pagewire-sweep.timer
+    NEXT                         LEFT LAST                         PASSED UNIT                 ACTIVATES
+    Mon 2026-11-02 18:38:45 UTC   9s Mon 2026-11-02 18:37:45 UTC 50s ago pagewire-sweep.timer pagewire-sweep.service
+
+    $ systemctl is-system-running
+    running
+    $ systemctl --failed --no-legend
+    (none)
+
+-------------------------------------------------------------------------------
+After `pct reboot 99999` — the second half of the criterion
+-------------------------------------------------------------------------------
+Container back in ~10s. Settled, then read:
+
+    2026-11-02 18:39:31 UTC, up 0:00
+      pagewire.service        active
+      pagewire-sweep.timer    active
+      nginx.service           active
+      transistor.service      active
+      unit.service (retired)  inactive
+      is-system-running       running
+      failed units            (none)
+
+    $ journalctl -u pagewire.service -b
+    Nov 02 18:39:12 nixos systemd[1]: Started Pagewire relay — e-reader ingest and identity review.
+    Nov 02 18:39:13 nixos pagewire-serve[331]: INFO:     Started server process [331]
+    Nov 02 18:39:13 nixos pagewire-serve[331]: INFO:     Application startup complete.
+    Nov 02 18:39:13 nixos pagewire-serve[331]: INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)
+
+It starts itself, unprompted, after a reboot — and still accepts events:
+
+    $ curl -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8799/events/session …
+    200
+
+**Criterion 3 is MET.**

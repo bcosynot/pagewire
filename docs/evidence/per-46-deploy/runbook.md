@@ -3,7 +3,43 @@
 Each step says **which acceptance criterion it closes** and is marked **NOT YET RUN**,
 unless it is marked **DONE** with the evidence beside it.
 
-**Nothing in this runbook has been executed against the box.** The build environment that
+> ## ALL EIGHT STEPS HAVE NOW BEEN RUN — 2026-11-02
+>
+> **All six acceptance criteria are MET.** Executed against the live box by the agent, at
+> the owner's instruction. Evidence, one file per criterion:
+>
+> | criterion | evidence |
+> |---|---|
+> | 1 — input by URL, pinned in `flake.lock` | `criterion-1-input-and-lock.txt` |
+> | 2 — `nix flake check` and `nix build …base-server-lxc` both succeed | `criterion-2-flake-check.txt` |
+> | 3 — service active after the switch, and after a reboot | `criterion-3-service-and-reboot.txt` |
+> | 4 — a real event POST from another LAN machine, plain HTTP, 2xx | `criterion-4-curl.txt` |
+> | 5 — no new plaintext secret in `flake.nix` | `criterion-5-no-secret.txt` |
+> | 6 — tunables settable without editing code | `criterion-6-shipped-tunables.txt` (offline), `criterion-6-tunables-live.txt` (live) |
+>
+> **Three things worth carrying forward from the run.**
+>
+> 1. **The opening claim that "there is no `nix` here" was stale.** `apt-get install
+>    nix-bin` gives Nix 2.26.3 on Debian 13, enough for `flake check`/`update`/`eval` and
+>    targeted builds. It did not change what happened on the box, but it is why this
+>    runbook could be re-checked before being attempted.
+> 2. **The blocker was never the tokens.** Both destinations default to OFF, so criteria 3
+>    and 4 needed no Readwise or Hardcover credential — and none was invented. What was
+>    missing was the *device* token, and that already existed at
+>    `spike/plugin/token.json` (the same value `make deploy` copies to the SD card), so the
+>    reader still agrees. Verified by comparing the sha256 of the token on both sides.
+> 3. **The switch exited 4 until the env file existed**, and that failure was recorded
+>    rather than silenced — no placeholder file was created to make it go away. Once the
+>    file was installed the same command exited 0 and `is-system-running` went from
+>    `degraded` to `running`. **That ordering — env file before switch — is the one real
+>    trap here.**
+>
+> Still not proven even now, deliberately: that the **device** itself can reach the
+> listener. That is PER-47.
+
+*(As this runbook was written, before the run — superseded by the block above, kept so the
+record shows what was believed when the steps were drafted.)* **Nothing in this runbook has
+been executed against the box.** The build environment that
 produced this branch has no `nix` (and ~4.5 GiB free, too little to install it and evaluate
 a NixOS system), so every criterion that needs a running service is parked here rather than
 claimed. What *was* done is in the repo: the flake, the module, the shipped tunables file,

@@ -1,0 +1,53 @@
+=== Criterion 4 — a real event POST from another LAN machine returns 2xx over plain HTTP ===
+
+No TLS. No VPN. Plain HTTP on the LAN, from a different machine than the relay.
+
+**From** 192.168.0.103 (the Hermes container, `hermes`, a separate CT on the same host)
+**To**   http://192.168.0.112:8799/events/session
+
+-------------------------------------------------------------------------------
+The transcript
+-------------------------------------------------------------------------------
+    $ curl -sS -w 'HTTP_STATUS=%{http_code}\n' \
+        -X POST http://192.168.0.112:8799/events/session \
+        -H "Authorization: Bearer <the device token from spike/plugin/token.json>" \
+        -H 'Content-Type: application/json' \
+        -d '{"v":"1","event":"reader.session","id":"deploy-check-1","ts":0,
+             "book":"/x.epub","document":"00000000000000000000000000000000",
+             "start_time":0,"end_time":60,"duration_seconds":60,
+             "start_progress_bp":0,"end_progress_bp":100,"progress_scale":10000}'
+
+    HTTP_STATUS=200
+
+    --- response body ---
+    {"ok":true,"stored":true,"id":"deploy-check-1"}
+
+The token value is deliberately not reproduced here. It is the same secret as the
+device's `spike/plugin/token.json`, which is git-ignored and lives only on the SD card
+and in the relay's env file.
+
+-------------------------------------------------------------------------------
+And the relay's own record of it
+-------------------------------------------------------------------------------
+    $ journalctl -u pagewire.service -n 12
+    Nov 02 18:38:32 nixos pagewire-serve[903]: INFO:     Uvicorn running on http://127.0.0.1:8788
+    Nov 02 18:38:49 nixos pagewire-serve[903]: INFO:     127.0.0.1:39390 - "POST /events/session HTTP/1.1" 200 OK
+
+Note `127.0.0.1:39390` as the peer: the request reached uvicorn through the nginx
+plain-HTTP listener on 8799, exactly as designed. The device-facing port is nginx, not
+uvicorn, and uvicorn is never exposed directly.
+
+A second event was posted after the reboot and also returned 200; `/healthz` then
+reported `"events":2`, so both were stored:
+
+    {"ok":true,"version":"0.0.1","events":2,"destinations":{"readwise":false,"hardcover":false}}
+
+-------------------------------------------------------------------------------
+What this does NOT prove
+-------------------------------------------------------------------------------
+It proves the LAN listener answers and the relay ingests. It does **not** prove the
+**device** can reach it: the reader's web client only runs in File Transfer / Calibre
+Wireless mode and its sleep-entry drain is a ten-second window on real hardware. That is
+PER-47's end-to-end check, deliberately, and is stated in the runbook too.
+
+**Criterion 4 is MET.**
