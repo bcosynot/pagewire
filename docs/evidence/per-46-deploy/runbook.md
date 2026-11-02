@@ -124,6 +124,25 @@ criterion 2 actually names — lives in `base-server`, which has no CI at all. W
 unproven here is the config-repo eval and the toplevel build *for the real box's
 configuration*, not the module. Evidence: `criterion-2-ci.txt`.
 
+**And the config repo now has that CI too — where it immediately went red for two
+pre-existing reasons.** Running the same job against `base-server` found, first, that
+`pagewire.url = "github:bcosynot/pagewire"` resolves to the relay's **default branch**, which
+does not carry `flake.nix` until the relay's PR lands (an ordering constraint, not a defect);
+and second, and far more important, that the configuration **does not evaluate against
+current nixpkgs at all**:
+
+    error: Failed assertions:
+    - The option definition `services.unit' in `…/flake.nix' no longer has any effect;
+      please remove it.
+      services.unit has been removed together with pkgs.unit.
+
+NGINX Unit is gone from nixpkgs and this repo's `webServer` module still sets it. Because
+the repo commits **no `flake.lock`**, CI resolves current nixpkgs; the box only evaluates
+because it pins an older nixpkgs in a lock the repo does not track. So criterion 2 cannot be
+satisfied as written until either a lock is committed or the module migrates off Unit — and
+that is the owner's call, not this ticket's. Full transcript and reasoning:
+`criterion-2-base-server-ci.txt`.
+
 Paste both transcripts into `criterion-2-flake-check.txt`.
 
 ## 4. Install the tunables file on the box — NOT YET RUN
