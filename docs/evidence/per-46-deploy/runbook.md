@@ -5,9 +5,18 @@ unless it is marked **DONE** with the evidence beside it.
 
 **Nothing in this runbook has been executed against the box.** The build environment that
 produced this branch has no `nix` (and ~4.5 GiB free, too little to install it and evaluate
-a NixOS system), so every criterion that needs evaluation or a running service is parked
-here rather than claimed. What *was* done is in the repo: the flake, the module, the
-shipped tunables file, and the tests that pin the last of those to the code.
+a NixOS system), so every criterion that needs a running service is parked here rather than
+claimed. What *was* done is in the repo: the flake, the module, the shipped tunables file,
+and the tests that pin the last of those to the code.
+
+**The module is no longer unevaluated.** `.github/workflows/nix.yml` runs `nix flake check`
+on every push, and the flake's `checks` output imports `nixos/pagewire.nix` into a throwaway
+system — the first run at `db89266` **built** that system and reported
+`✅ checks.x86_64-linux.pagewire-module-evaluates`. So the module is known to evaluate into a
+complete, buildable NixOS system. That is the relay's own flake, though, not the config
+repo's, and not the box: criterion 2 as written names
+`nixosConfigurations.base-server-lxc`, which lives in `base-server` and has no CI.
+Evidence: `criterion-2-ci.txt`.
 
 Reaching the box is not a blocker and never was: the `~/.ssh/base_server_lxc` key the
 config repo's AGENTS.md names does not exist and is not needed. The relay's target is
@@ -104,13 +113,16 @@ package that will not build, fails here and not on the box. This step is the one
 environment could not run, so it is the likeliest place for a first-try error in
 `nixos/pagewire.nix` — read the eval error rather than assuming.
 
-**Partly covered by CI now.** `.github/workflows/nix.yml` in the relay repo runs
-`nix flake check` on every push and PR, and the flake's `checks` output evaluates the
-module inside a throwaway system — so a module error shows up on the PR rather than here.
-That covers the first command **in the relay's own flake**. It does **not** cover this
-step: the config repo's flake is a different flake, and
-`nix build .#nixosConfigurations.base-server-lxc…` — the thing criterion 2 actually names
-— lives in `base-server`, which has no CI at all.
+**Partly covered by CI, and the covered half is the one that was unproven.** The relay repo's
+`nix flake check` (`.github/workflows/nix.yml`) evaluates *and builds* the module inside a
+throwaway system — its first run reported
+`✅ checks.x86_64-linux.pagewire-module-evaluates` while building
+`nixos-system-nixos-26.11.20261101.0bb2eed.drv`. So a module error would show up on the PR
+rather than here. That is still the **relay's own flake**, not this step: the config repo's
+flake is a different one, and `nix build .#nixosConfigurations.base-server-lxc…` — the thing
+criterion 2 actually names — lives in `base-server`, which has no CI at all. What is left
+unproven here is the config-repo eval and the toplevel build *for the real box's
+configuration*, not the module. Evidence: `criterion-2-ci.txt`.
 
 Paste both transcripts into `criterion-2-flake-check.txt`.
 

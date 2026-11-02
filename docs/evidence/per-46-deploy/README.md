@@ -5,6 +5,7 @@ What each file here is, and what it measured.
 | File | What it is |
 |---|---|
 | `runbook.md` | The eight steps a machine with `nix` and access to the box runs, each naming the criterion it closes. **NOT YET RUN** — see its opening. |
+| `criterion-2-ci.txt` | The relay's own `nix flake check` in CI: the module evaluated and its throwaway system built (`✅ checks.x86_64-linux.pagewire-module-evaluates`). Not criterion 2 as written, but it closes the "nothing has ever evaluated the module" gap. Captured from the run at `db89266`. |
 | `criterion-6-shipped-tunables.txt` | Criterion 6's offline half: the shipped `deploy/pagewire.env.example` beside the test that pins it to `config.py`. Generated on this tree. |
 
 There is no generator script here, deliberately: the only artifact this session could
@@ -24,5 +25,6 @@ Every criterion except 6's offline half needs something this environment does no
 
 `nix` is absent and the filesystem has ~4.5 GiB free — not enough to install nix and
 evaluate a NixOS system — so those are the runbook's steps and not this session's claims.
-The module in `nixos/pagewire.nix` has therefore never been evaluated by anything, which is
-the single largest caveat on this branch.
+The one piece of that which has since been closed is the largest one: the module **is** now
+evaluated, because the relay's own CI does it (`criterion-2-ci.txt`). What remains
+unevaluated is the **config repo's** flake and the box's real configuration.
