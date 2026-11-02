@@ -359,3 +359,31 @@ button { font: inherit; padding: .2rem .6rem; cursor: pointer; }
 a { color: inherit; }
 """
 
+
+def serve(argv: list[str] | None = None) -> None:
+    """Run the relay under uvicorn — the console entry point a systemd unit starts.
+
+        pagewire-serve --host 127.0.0.1 --port 8788
+
+    It names the factory rather than a module-level app because the app owns a SQLite
+    file, and building it at import time would create databases wherever Python happened
+    to be. Host and port are arguments so the unit sets them, and both default to a
+    loopback bind — the LAN-facing listener in front of it is nginx's job, not this
+    process's.
+    """
+    import argparse
+
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description="Run the Pagewire relay")
+    parser.add_argument("--host", default="127.0.0.1", help="Address to bind (default: loopback)")
+    parser.add_argument("--port", type=int, default=8788, help="Port to bind (default: 8788)")
+    arguments = parser.parse_args(argv)
+
+    uvicorn.run(
+        "pagewire.app:create_app",
+        factory=True,
+        host=arguments.host,
+        port=arguments.port,
+    )
+

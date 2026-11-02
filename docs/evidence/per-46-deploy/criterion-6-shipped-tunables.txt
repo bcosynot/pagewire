@@ -1,0 +1,103 @@
+criterion 6 (offline half): every tunable the relay reads is present in the
+shipped file, and no tunable is read that the file omits.
+
+## the shipped file, deploy/pagewire.env.example
+
+```
+# Pagewire relay — tunables and credentials.
+#
+# This is the SHIPPED EXAMPLE. The file the service actually reads is a copy of this
+# with the placeholders filled in, installed out of band at
+#
+#     /var/app/data/pagewire/pagewire.env          (mode 0600, owned by the pagewire user)
+#
+# and referenced from flake.nix by PATH only, via services.pagewire.environmentFile.
+# The config repo's AGENTS.md forbids new plaintext secrets in flake.nix, so neither
+# token below may ever be written there.
+#
+# Format is systemd EnvironmentFile: one KEY=value per line, `#` comments, no shell
+# expansion. Every value here overrides the default built into src/pagewire/config.py,
+# so this file is the whole of the relay's configuration — nothing needs editing in code
+# to change a behaviour.
+#
+# The names below are checked against the code by tests/test_deploy_config.py: every
+# PAGEWIRE_* variable config.py reads must appear here, so a new setting cannot be added
+# without a place to set it.
+
+# --- Where the relay keeps its data -------------------------------------------------
+# SQLite file. Must agree with services.pagewire.stateDir in the NixOS module, which is
+# what creates the directory and the file.
+PAGEWIRE_DB=/var/app/data/pagewire/pagewire.db
+
+# --- The device ---------------------------------------------------------------------
+# Shared secret the device sends as `Authorization: Bearer …`. Empty means the relay
+# refuses every event rather than accepting unauthenticated writes onto the LAN, so this
+# must be set to the same value as token.json on the SD card.
+PAGEWIRE_TOKEN=REPLACE_WITH_THE_DEVICE_SHARED_SECRET
+
+# The device's address for the metadata sweep: its IP as shown on the reader's screen,
+# or `crosspoint.local` (mDNS, which may not resolve from inside the LXC). Re-read it
+# from the device each time — it is DHCP. Empty disables the sweep's target.
+PAGEWIRE_DEVICE_ADDRESS=
+
+# How long to wait on the device's File Transfer web server. It is a microcontroller
+# serving hundreds of megabytes of EPUBs over WiFi, so this is generous on purpose.
+PAGEWIRE_SWEEP_TIMEOUT_SECONDS=60
+
+# --- Destination: Readwise Books ----------------------------------------------------
+# Off by default. With it off, no request reaches Readwise at all.
+PAGEWIRE_READWISE_ENABLED=false
+# Needs the `write:library` scope. A missing scope comes back as a 403
+# insufficient_scope and is reported, not swallowed.
+PAGEWIRE_READWISE_TOKEN=REPLACE_WITH_A_READWISE_TOKEN
+PAGEWIRE_READWISE_BASE_URL=https://readwise.io
+
+# --- Destination: Hardcover ---------------------------------------------------------
+# Off by default, independently of Readwise.
+PAGEWIRE_HARDCOVER_ENABLED=false
+# Needs `read:library` and `write:library`.
+PAGEWIRE_HARDCOVER_TOKEN=REPLACE_WITH_A_HARDCOVER_TOKEN
+PAGEWIRE_HARDCOVER_ENDPOINT=https://api.hardcover.app/v1/graphql
+
+# --- Stitching ----------------------------------------------------------------------
+# Gaps shorter than this are pauses within a sitting; at or above it they end one.
+# Vivek's rule, 2026-10-31: "short gaps are pauses, long pauses end sittings."
+PAGEWIRE_STITCH_WINDOW_SECONDS=1800
+# Readwise refuses a session whose ended_at is more than 24 hours after its started_at,
+# so a longer continuous span is split at that cap.
+PAGEWIRE_MAX_SPAN_SECONDS=86400
+
+# --- The periodic sweep -------------------------------------------------------------
+# The "sweep trigger": how often the systemd timer runs the derive-then-deliver sweep.
+# A derived sitting is eligible only once no new constituent event has arrived for the
+# stitch window, so this is the cadence at which quiet sittings are finalised and pushed.
+# Running `pagewire-derive` / `pagewire-deliver` by hand is the manual form of the same
+# trigger. Match this to services.pagewire.sweepInterval in the NixOS module.
+PAGEWIRE_SWEEP_INTERVAL_SECONDS=60
+
+# --- Delivery -----------------------------------------------------------------------
+# How many sittings go in one Readwise request (the service takes at most 10).
+PAGEWIRE_DELIVERY_BATCH_SIZE=10
+# Retry policy when a destination refuses. Backoff doubles from its start value to its
+# maximum; five attempts at 2s start have a 30-second worst case per batch.
+PAGEWIRE_DELIVERY_RETRY_ATTEMPTS=5
+PAGEWIRE_DELIVERY_RETRY_BACKOFF_SECONDS=2
+PAGEWIRE_DELIVERY_RETRY_BACKOFF_MAX_SECONDS=60
+# Minimum spacing between progress writes to Hardcover, per book.
+PAGEWIRE_HARDCOVER_THROTTLE_SECONDS=60
+# Per-request timeout on either service.
+PAGEWIRE_SERVICE_TIMEOUT_SECONDS=30
+
+# --- Device label and timezone ------------------------------------------------------
+# What a delivered session says about the device that produced it.
+PAGEWIRE_DEVICE_TYPE=E-Reader
+PAGEWIRE_DEVICE_VENDOR=Xteink
+PAGEWIRE_DEVICE_MODEL=X4
+# Local zone for the sessions the relay sends; Readwise takes an IANA name.
+PAGEWIRE_TIMEZONE=America/New_York
+```
+
+## the test that pins it, run on this tree
+
+$ python -m pytest tests/test_deploy_config.py -v
+============================== 4 passed in 0.02s ===============================

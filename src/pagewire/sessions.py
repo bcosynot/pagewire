@@ -185,6 +185,44 @@ def derive_and_store(
     return sittings
 
 
+def main(argv: list[str] | None = None) -> int:
+    """Derive sittings from the stored raw events — the shape a systemd timer can run.
+
+        python -m pagewire.sessions                 # re-derive from every stored event
+        python -m pagewire.sessions --db PATH       # against a specific SQLite file
+
+    Derivation is deliberately separate from delivery: it is pure and re-runnable, so a
+    changed stitch rule can be replayed over the whole history without touching the send
+    log. The delivery CLIs read the table this writes.
+    """
+    import argparse
+    import sys
+
+    from .config import Settings
+    from .storage import Storage
+
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("--db", default="", help="SQLite path (default: PAGEWIRE_DB)")
+    arguments = parser.parse_args(argv)
+
+    settings = Settings.from_env()
+    storage = Storage(arguments.db or settings.db_path)
+    sittings = derive_and_store(
+        storage,
+        stitch_window_seconds=settings.stitch_window_seconds,
+        max_span_seconds=settings.max_span_seconds,
+    )
+    print(
+        f"derived {len(sittings)} sitting(s) from {storage.count_events()} stored event(s)",
+        file=sys.stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by the systemd timer
+    raise SystemExit(main())
+
+
 def _stitch(
     document: str,
     group: Sequence[_Session],
