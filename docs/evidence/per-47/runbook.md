@@ -240,7 +240,7 @@ the synthetic events PER-46's deploy check posted (`deploy-check-1`, `deploy-che
 raw_events: 6   (deploy-check-1, deploy-check-2 — synthetic; 823b7018-1 and
                  fdfeeadb-1..3 — the device's own Jinn-Bot drain on 2026-11-01)
 derived_sessions: 3   (the two synthetic ones, plus the Jinn-Bot sitting)
-books: 100   (the metadata sweep has run; ~30 auto-matched, the rest held for confirmation)
+books: 100   (the metadata sweep has run: 62 auto-matched, 38 held for confirmation)
 ```
 
 **Updated 2026-11-02.** The baseline originally read `raw_events: 2`, `derived_sessions: 2`
