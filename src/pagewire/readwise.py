@@ -41,9 +41,15 @@ SESSIONS_PATH = "/books/api/v1/sessions"
 # limit is the API's, so it lives here beside the paths rather than in configuration.
 MAX_SESSIONS_PER_REQUEST = 10
 
-# The shelf a newly matched book goes on. It is what the owner is actually doing with it:
-# the relay only ever identifies books it has seen reading events for.
-DEFAULT_SHELF = "currently_reading"
+# The shelf a book is put on **when a sitting is delivered for it**. Readwise's own guide
+# says to "send POST /books first with the ISBN and status currently_reading, then
+# POST /sessions", so the claim arrives with the reading that justifies it.
+#
+# There is deliberately no shelf for *matching*. A book the relay has merely identified gets
+# no status at all, and Readwise's own default (`want_to_read`) applies. The old default
+# here was `currently_reading`, asserted for every book matching touched — which put 50
+# books on the owner's Currently Reading shelf on 2026-11-02 while nothing was reading them.
+SHELF_ON_DELIVERY = "currently_reading"
 
 
 class ReadwiseError(RuntimeError):
@@ -132,13 +138,17 @@ class ReadwiseClient:
         isbn: str | None = None,
         title: str | None = None,
         author: str | None = None,
-        status: str = DEFAULT_SHELF,
+        status: str | None = None,
     ) -> ReadwiseBook:
         """Add a book, or update the one that already matched. Returns its `book_id`.
 
         An ISBN is preferred and is the only thing used when it is known. Without one the
         title and author go instead — the same identity Readwise falls back to internally,
-        offered here because a confirmed row has nothing better.
+        offered here when delivery has nothing better.
+
+        `status` is **omitted** when not given, not defaulted: the shelf is a claim about
+        what the owner is doing, so the caller has to have a reason for it. Readwise then
+        applies its own default.
         """
         if isbn:
             product: dict[str, str] = {"isbn": isbn}
@@ -153,9 +163,10 @@ class ReadwiseClient:
                 "cannot match a book with neither an ISBN nor a title and author"
             )
 
-        body = self._request(
-            "POST", BOOKS_PATH, payload={"items": [{"product": product, "status": status}]}
-        )
+        item: dict[str, Any] = {"product": product}
+        if status is not None:
+            item["status"] = status
+        body = self._request("POST", BOOKS_PATH, payload={"items": [item]})
         results = body.get("results") or []
         if not results:
             raise ReadwiseError("Readwise answered a book request with no result")

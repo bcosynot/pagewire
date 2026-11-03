@@ -122,6 +122,29 @@ def test_a_finalised_sitting_is_recorded_with_the_devices_own_numbers():
     assert session["device"] == {"type": "E-Reader", "vendor": "Xteink", "model": "X4"}
 
 
+def test_a_book_readwise_has_never_been_told_about_is_added_at_delivery():
+    """Matching stopped writing to the account, so the first sitting is what adds the book.
+
+    Before 2026-11-02 every identified book arrived already shelved. Now it appears when
+    there is a reading to justify it, and the shelf claim comes with the sitting — which is
+    Readwise's own recipe: "send POST /books first with the ISBN and status
+    currently_reading, then POST /sessions".
+    """
+    with _server(library={}) as server:      # Readwise does not have this book...
+        store = _store(identified=False)     # ...and the relay has no id for it either
+        # Matched, so its sittings are deliverable — the id is what is missing, not the match.
+        store.set_book_identity(DOC, status="confirmed")
+        store.replace_sittings([_sitting()])
+        report, _ = _deliver(store, server)
+
+    assert report.delivered == [(DOC, START)]
+    assert len(server.creations) == 1, "the book should have been added on the way"
+    assert server.creations[0]["status"] == "currently_reading"
+    assert len(server.sessions) == 1
+    # And the id it returned is kept, so the next sitting needs no second add.
+    assert store.book(DOC)["readwise_id"]
+
+
 def test_the_positions_are_the_devices_basis_points_over_ten_thousand():
     """Criterion 1: `percent_at_*` is a fraction, and the device counts basis points."""
     with _server() as server:
@@ -198,19 +221,22 @@ def test_a_book_nothing_identified_is_never_delivered_however_many_sittings_it_h
     assert report.delivered == []
 
 
-def test_an_identified_book_whose_row_carries_no_readwise_id_is_not_sent():
-    """A row marked matched but with no id: refuse, and say so. Never a guess."""
-    with _server() as server:
+def test_a_book_that_cannot_be_added_is_refused_rather_than_guessed_at():
+    """Delivery adds a book it has no id for — but if that add is refused, it stops there.
+
+    Inventing an id would address the wrong book. The refusal is reported rather than
+    swallowed, and nothing is claimed in the ledger.
+    """
+    with _server(library={}, write_allowed=False) as server:
         store = _store(identified=False)
-        # Matched without a Readwise id is a state identity's own rule should prevent, so
-        # delivery must treat it as undeliverable rather than invent an id.
+        # Matched without a Readwise id: delivery has to add it, and the add is refused.
         store.set_book_identity(DOC, status="confirmed")
         store.replace_sittings([_sitting()])
         report, _ = _deliver(store, server)
 
     assert server.sessions == []
     assert report.delivered == []
-    assert any("readwise id" in reason.lower() for reason in report.failed.values())
+    assert any("could not be added" in reason.lower() for reason in report.failed.values())
     # Nothing was attempted, so nothing may be claimed: a send-log row here would read
     # later as "we tried and never learned the outcome" about a request that was never made.
     assert store.send_log() == []

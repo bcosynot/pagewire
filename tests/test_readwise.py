@@ -159,6 +159,27 @@ def test_a_rate_limit_is_marked_transient_so_a_caller_can_choose_to_retry():
     assert raised.value.transient is True
 
 
+def test_a_book_is_added_with_no_shelf_claim_unless_one_is_asked_for():
+    """The shelf says what the owner is doing, so it is not asserted by default.
+
+    The cost of the old default, measured: 50 books on Readwise's Currently Reading shelf
+    because matching added them while nothing was reading them. Readwise defaults `status`
+    to `want_to_read` when the key is absent, which is the honest answer for a book the
+    relay has merely identified.
+    """
+    with ReadwiseServer(library={}) as server:
+        _client(server).add(isbn="9781915590012")
+
+    assert "status" not in server.creations[0], server.creations[0]
+
+
+def test_a_shelf_can_still_be_claimed_when_there_is_a_reading_to_justify_it():
+    with ReadwiseServer(library={}) as server:
+        _client(server).add(isbn="9781915590012", status="currently_reading")
+
+    assert server.creations[0]["status"] == "currently_reading"
+
+
 def test_an_insufficient_scope_refusal_is_not_transient():
     """A token missing its write scope is a 403 every time: an answer, not a delay."""
     with ReadwiseServer(library={}, write_allowed=False) as server:

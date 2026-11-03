@@ -190,6 +190,24 @@ def deliver_hardcover(
             continue
 
         if read is None:
+            # Matching no longer creates the entry, so the first progress write does. This
+            # is the only moment an entry is needed for: a book with no reading never
+            # appears in the account at all.
+            try:
+                client.ensure_library_entry(book_id=book_id, edition_id=edition_id)
+                read = client.read_state(book_id, edition_id)
+            except HardcoverError as exc:
+                message = str(exc)
+                _fail_all(storage, positioned, report, say, message, status_code=exc.status_code)
+                _finish_unavailable(
+                    storage, document, finisher, report, say, message, status_code=exc.status_code
+                )
+                if exc.status_code in AUTH_STATUSES:
+                    report.aborted = message
+                    break
+                continue
+
+        if read is None:
             _refuse_all(storage, positioned, report, say, NO_ENTRY)
             _finish_unavailable(storage, document, finisher, report, say, NO_ENTRY)
             continue

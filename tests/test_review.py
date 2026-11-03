@@ -138,7 +138,7 @@ def test_confirming_from_the_page_writes_both_ids_and_clears_the_queue(tmp_path)
     assert row["status"] == "confirmed"
     assert row["hardcover_id"] == "118822"
     assert row["hardcover_edition_id"] == "640044"
-    assert row["readwise_id"] == "4790034"
+    assert row["readwise_id"] is None  # delivery resolves the Readwise side
     assert store.books_needing_confirmation() == []
 
 

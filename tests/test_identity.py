@@ -106,12 +106,21 @@ def test_an_isbn_both_services_know_matches_the_row_automatically():
     assert row["hardcover_edition_id"] == "990011"
     assert row["error"] is None
     assert report.resolved == [JINN_PATH]
-    # Criterion 2 asks for the `user_books` entry to exist, not just the ids.
-    assert [entry["book_id"] for entry in hc.library.values()] == [328491]
+    # **Amended 2026-11-02 by the owner.** PER-43's criterion 2 asked for the `user_books`
+    # entry to exist once a row was matched, and it did — which is how 60 entries ended up
+    # in the account on Currently Reading for books nobody was reading. Creating an entry is
+    # delivery's job now, and only for a book that has a sitting, so a matched row carries
+    # ids and no entry.
+    assert hc.library == {}
 
 
-def test_an_isbn_readwise_does_not_have_is_created_there():
-    """Criterion 1's other half: `POST /books` supplies the id the row keeps."""
+def test_an_isbn_readwise_does_not_have_is_left_for_delivery():
+    """Readwise is not asked to add the book; the row keeps no id until a sitting needs one.
+
+    Criterion 1's other half used to be "`POST /books` supplies the id the row keeps". That
+    belongs to delivery now, which is why a book he has never read never arrives in the
+    library at all.
+    """
     storage = Storage(":memory:")
     _swept(storage)
 
@@ -119,8 +128,11 @@ def test_an_isbn_readwise_does_not_have_is_created_there():
         with HardcoverServer(catalog=[JINN_BOT_HC], library={}) as hc:
             resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
 
-    assert _row(storage, "doc-jinn-bot")["readwise_id"] == "4790034"
-    assert rw.creations[0]["product"] == {"isbn": JINN_BOT_ISBN}
+    row = _row(storage, "doc-jinn-bot")
+    assert row["status"] == "auto"
+    assert row["hardcover_id"] == "328491"
+    assert row["readwise_id"] is None
+    assert rw.creations == [], "nothing may be added to the library by matching"
 
 
 def test_the_same_book_is_not_created_twice_by_a_second_run():
@@ -184,8 +196,9 @@ def test_confirming_a_row_once_writes_both_ids_and_moves_it_to_confirmed():
     """Criterion 3: one confirmation is enough, and it is where the ambiguity ends.
 
     The owner supplies the Hardcover ids — that lookup is the one the relay cannot make
-    confidently, which is why the row was in the queue — while Readwise is matched by
-    title and author, which its own API documents as a supported identity.
+    confidently, which is why the row was in the queue. Readwise is not contacted at all:
+    a book with no ISBN cannot be looked up read-only (`GET /books` filters by ISBN, ASIN
+    or id, never by title), so that side is resolved by delivery when there is a sitting.
     """
     storage = Storage(":memory:")
     _no_isbn_row(storage)
@@ -205,8 +218,8 @@ def test_confirming_a_row_once_writes_both_ids_and_moves_it_to_confirmed():
     assert row["status"] == "confirmed"
     assert row["hardcover_id"] == "118822"
     assert row["hardcover_edition_id"] == "640044"
-    assert row["readwise_id"] == "4790034"
-    assert rw.creations[0]["product"] == {"title": "Burning God", "author": "R. F. Kuang"}
+    assert row["readwise_id"] is None
+    assert rw.creations == []
     assert storage.books_needing_confirmation() == []
 
 
@@ -298,15 +311,16 @@ def test_an_unmatched_row_is_not_delivered_however_many_sittings_it_has():
 def test_an_under_scoped_token_is_recorded_on_the_row_and_is_visible():
     """Criterion 5: a 403 `insufficient_scope` lands on the row, not in a log nobody reads.
 
-    Readwise resolved here and Hardcover refused, and the row must not be half matched:
-    the ids from the success are not written, so a later run — after the token is fixed —
-    resolves the book cleanly instead of delivering to one service only.
+    The refusal comes from Hardcover's *lookup*, since matching writes nothing to either
+    service any more — the read scope is the one that matters at this stage. The row must
+    not be half matched: the ids from the success are not written, so a later run, after the
+    token is fixed, resolves the book cleanly instead of delivering to one service only.
     """
     storage = Storage(":memory:")
     _swept(storage)
 
     with ReadwiseServer(library={JINN_BOT_ISBN: {**JINN_BOT, "isbn": JINN_BOT_ISBN}}) as rw:
-        with HardcoverServer(catalog=[JINN_BOT_HC], library={}, write_scope=False) as hc:
+        with HardcoverServer(catalog=[JINN_BOT_HC], library={}, read_scope=False) as hc:
             report = resolve_books(
                 storage, readwise=_readwise(rw), hardcover=_hardcover(hc)
             )
@@ -315,7 +329,7 @@ def test_an_under_scoped_token_is_recorded_on_the_row_and_is_visible():
     assert row["status"] == "unmatched"
     assert row["readwise_id"] is None
     assert "insufficient_scope" in row["error"]
-    assert "write:library" in row["error"]
+    assert "read:library" in row["error"]
     assert [r["book_path"] for r in storage.books_with_errors()] == [JINN_PATH]
     assert report.errors == {JINN_PATH: row["error"]}
 
@@ -343,14 +357,14 @@ def test_one_book_failing_does_not_stop_the_others_being_resolved():
     )
 
     with ReadwiseServer(library={}) as rw:
+        # Jinn-Bot's ISBN is absent from the catalog on purpose: the failure has to come from
+        # a *lookup* now, because matching no longer writes anything that could be refused.
         with HardcoverServer(
             catalog=[
-                JINN_BOT_HC,
                 {"id": 5, "title": "Good Book", "editions": [{"id": 9, "isbn_13": GOOD_ISBN}]},
             ],
             library={},
         ) as hc:
-            rw.fail_isbns.add(JINN_BOT_ISBN)
             report = resolve_books(
                 storage, readwise=_readwise(rw), hardcover=_hardcover(hc)
             )
@@ -433,6 +447,33 @@ def test_the_cli_can_list_the_queue_without_calling_anything(tmp_path, capsys):
 # ------------------------------------------------- a service that pushes back
 
 
+def test_matching_writes_nothing_to_either_library():
+    """The guard for 2026-11-02: identity is read-only on both accounts.
+
+    A bulk resolve over all 100 swept books put 50 books on Readwise's Currently Reading
+    shelf and created 60 Hardcover library entries, because *matching itself* added them.
+    Identity's job is to find out what a book is. Writing to either account belongs to
+    delivery, and only for a book that has a reading to deliver.
+    """
+    storage = Storage(":memory:")
+    _swept(storage, document="doc-isbn")        # an ISBN Readwise already has
+    _jinn_without_isbn(storage)                 # no ISBN, matched by title and author
+
+    with ReadwiseServer(library={JINN_BOT_ISBN: {**JINN_BOT, "isbn": JINN_BOT_ISBN}}) as rw:
+        with HardcoverServer(catalog=[JINN_BOT_HC, JINN_RICH], library={}) as hc:
+            report = resolve_books(storage, readwise=_readwise(rw), hardcover=_hardcover(hc))
+
+    assert len(report.resolved) == 2, "both rows should still be matched by lookup"
+    # Not one write to either account, on either path.
+    assert rw.creations == []
+    assert hc.library == {}
+    # The id Readwise already had is recorded; the one it did not have is left for delivery.
+    assert _row(storage, "doc-isbn")["readwise_id"] == str(JINN_BOT["id"])
+    assert _row(storage, "doc-jinn-bot")["readwise_id"] is None
+    # Hardcover's ids come from a lookup, which is a read.
+    assert _row(storage, "doc-jinn-bot")["hardcover_id"] == "770867"
+
+
 def test_a_rate_limited_book_is_retried_with_exponential_backoff():
     """A 429 is the service saying "later", not "no".
 
@@ -500,10 +541,10 @@ def test_a_refusal_that_is_not_transient_is_not_retried():
     _swept(storage)
     slept: list[float] = []
 
-    with ReadwiseServer(library={}, write_allowed=False) as rw:
+    with HardcoverServer(catalog=[JINN_BOT_HC], library={}, read_scope=False) as hc:
         report = resolve_books(
             storage,
-            readwise=_readwise(rw),
+            hardcover=_hardcover(hc),
             retry=RetryPolicy(
                 attempts=4,
                 backoff_seconds=2.0,
@@ -580,8 +621,10 @@ def test_a_row_with_no_isbn_is_matched_when_the_author_agrees_and_the_record_is_
     assert row["status"] == "auto"
     assert row["hardcover_id"] == "770867"
     assert row["hardcover_edition_id"] == "30772692"
-    assert row["readwise_id"] is not None
     assert row["matched_by"] == "title+author"
+    # No Readwise id: a book with no ISBN cannot be looked up read-only, so that side is
+    # delivery's when the first sitting arrives.
+    assert row["readwise_id"] is None
 
 
 def test_the_stub_is_passed_over_for_the_real_record_further_down_the_results():

@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .hardcover import HardcoverClient, HardcoverError
-from .readwise import DEFAULT_SHELF, ReadwiseClient, ReadwiseError
+from .readwise import ReadwiseClient, ReadwiseError
 from .retry import RetryPolicy
 from .storage import Storage
 
@@ -226,7 +226,7 @@ def _by_isbn(
 ) -> tuple[str | None, str | None, str | None]:
     """The ids for a book identified by an ISBN — the confident route."""
     hardcover_id, hardcover_edition_id = match_hardcover(hardcover, isbn)
-    return match_readwise(readwise, isbn=isbn), hardcover_id, hardcover_edition_id
+    return find_readwise(readwise, isbn=isbn), hardcover_id, hardcover_edition_id
 
 
 def _by_title_and_author(
@@ -247,11 +247,9 @@ def _by_title_and_author(
         raise HeldError(
             "no confident match — held for confirmation"
         )
-    readwise_id = match_readwise(readwise, isbn=None, title=row["title"], author=row["author"])
-    hardcover.ensure_library_entry(  # type: ignore[union-attr]
-        book_id=candidate.book_id, edition_id=candidate.edition_id
-    )
-    return readwise_id, candidate.book_id, candidate.edition_id
+    # No ISBN in the record, so there is no read-only way to ask Readwise about it: it stays
+    # unresolved until delivery has a sitting and adds it.
+    return find_readwise(readwise, isbn=None), candidate.book_id, candidate.edition_id
 
 
 def _match_row(
@@ -349,24 +347,20 @@ def confirm_book(
 
     try:
         if readwise_id is None:
-            readwise_id = match_readwise(
-                readwise,
-                # A row still in the queue usually has no ISBN to match on — that is why
-                # it is here — but a row queued by a failure may have one, and an ISBN is
-                # the better identity whenever it exists.
-                isbn=isbn,
-                title=row["title"],
-                author=row["author"],
-            )
+            # Read-only, and by ISBN only. A row in the queue usually has no ISBN — that is
+            # why it is here — so this normally answers None, and delivery resolves the
+            # book when it has a sitting for it.
+            readwise_id = find_readwise(readwise, isbn=isbn)
         if hardcover_id is None:
             hardcover_id, hardcover_edition_id = match_hardcover(hardcover, isbn)
     except (ReadwiseError, HardcoverError, IdentityError) as exc:
         storage.set_book_error(document, str(exc))
         raise IdentityError(str(exc)) from exc
 
+    # Only Hardcover has to be identified for a row to be confirmed. The Readwise id is
+    # obtained by delivery from the book's own identity, so a row without one is not
+    # half-identified — it is a row whose Readwise side has not been needed yet.
     missing = []
-    if readwise is not None and not readwise_id:
-        missing.append("readwise")
     if hardcover is not None and not hardcover_id:
         missing.append("hardcover")
     if missing:
@@ -393,34 +387,22 @@ def confirm_book(
     )
 
 
-def match_readwise(
-    client: ReadwiseClient | None,
-    *,
-    isbn: str | None,
-    title: str | None = None,
-    author: str | None = None,
-) -> str | None:
-    """The Readwise `book_id` for this book, creating it if Readwise does not have it.
+def find_readwise(client: ReadwiseClient | None, *, isbn: str | None) -> str | None:
+    """The Readwise `book_id` Readwise **already has** for this book, or None.
 
-    With an ISBN this asks whether it is already there before adding anything, which is
-    the order criterion 1 names. Without one it can only add-and-see: `POST /books` matches
-    title and author itself, and answers `existing` when the result is already in the
-    library.
+    Deliberately read-only, and that is the whole point: matching must not put a book into
+    the owner's library. The id is only *needed* when there is a sitting to deliver, and
+    delivery is where it is obtained — for the books that have a reading to justify them.
+
+    A book with no ISBN cannot be looked up at all: `GET /books` filters by ISBN, ASIN or
+    id, never by title. So it stays unresolved here and delivery adds it by title and
+    author when the time comes.
     """
-    if client is None:
+    if client is None or not isbn:
         return None
 
-    if isbn:
-        found = client.find_by_isbn(isbn)
-        if found is not None:
-            return found.book_id
-        return client.add(isbn=isbn, status=DEFAULT_SHELF).book_id
-
-    if not (title or author):
-        raise IdentityError(
-            "Readwise cannot match a book with no ISBN, no title and no author"
-        )
-    return client.add(title=title, author=author, status=DEFAULT_SHELF).book_id
+    found = client.find_by_isbn(isbn)
+    return found.book_id if found is not None else None
 
 
 def match_hardcover(
@@ -446,7 +428,7 @@ def match_hardcover(
         raise IdentityError(
             f"Hardcover has no edition with ISBN {isbn}; supply its ids on the review page"
         )
-    client.ensure_library_entry(book_id=found.book_id, edition_id=found.edition_id)
+    # The library entry is created by delivery, when there is progress to put on it.
     return found.book_id, found.edition_id
 
 

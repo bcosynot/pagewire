@@ -527,6 +527,10 @@ class HardcoverServer(_Server):
     # independently.
     write_error: str | None = None
     finish_error: str | None = None
+    # A refusal on the library-entry insert alone. "Hardcover will not take this book" is a
+    # different state from "the entry exists but has no read in progress", and neither
+    # `write_error` nor `finish_error` models the first.
+    entry_error: str | None = None
     requests: list[str] = field(default_factory=list)
     headers: list[dict[str, str]] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
@@ -732,6 +736,8 @@ class HardcoverServer(_Server):
             }
 
         if "insert_user_book(" in query:
+            if self.entry_error is not None:
+                return {"insert_user_book": {"error": self.entry_error, "user_book": None}}
             entry_object = variables.get("object") or {}
             self._next_user_book_id += 1
             entry = {

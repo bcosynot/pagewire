@@ -150,6 +150,23 @@ def test_a_sitting_lands_as_progress_pages_on_the_read_in_progress():
     assert write["object"]["action_at"] == STOPPED_AT
 
 
+def test_a_book_with_no_library_entry_gets_one_when_there_is_progress_to_write():
+    """Matching stopped creating entries, so the first sitting creates it.
+
+    Identified books used to arrive in the account already, shelf and all, whether or not
+    anything had been read — which is how 60 entries ended up on Currently Reading. The
+    entry is only needed when there is progress to put on it, so that is when it is made.
+    """
+    with _server(library={}) as server:      # Hardcover has no entry for this book
+        store = _store()
+        store.replace_sittings([_sitting()])
+        report = _deliver(store, server)
+
+    assert report.written == [(DOC, START)], report.failed
+    assert server.library, "the library entry should have been created on the way"
+    assert len(server.progress_writes) == 1
+
+
 def test_the_progress_write_goes_to_the_book_the_identity_resolved():
     """The write addresses the read the library issued, not a number the relay invented."""
     with _server() as server:
@@ -629,20 +646,21 @@ def test_the_client_refuses_to_call_hardcover_without_a_token():
         client.read_state(BOOK_ID, EDITION_ID)
 
 
-def test_a_book_with_no_hardcover_entry_at_all_is_reported():
+def test_a_book_hardcover_will_not_take_is_reported():
     """No entry is a different problem from no read, and it is named as itself.
 
-    Nothing can be written against a book Hardcover does not have, so the relay says which
-    of the two states it found rather than sending the owner looking for the wrong fix.
+    The entry is created on the way now, so this is the case where Hardcover refuses to
+    create it at all — nothing can be written against a book it will not take, and the relay
+    says so rather than sending the owner looking for the wrong fix.
     """
-    with _server(library={}) as server:
+    with _server(library={}, entry_error="edition is not in the catalog") as server:
         store = _store()
         store.replace_sittings([_sitting()])
         report = _deliver(store, server)
 
     assert report.written == []
-    assert "no library entry" in report.failed[(DOC, START)]
-    assert server.progress_writes == []
+    assert "edition is not in the catalog" in report.failed[(DOC, START)]
+    assert server.progress_writes == [], "nothing may be attempted without an entry"
 
 
 def test_a_mutation_that_answers_with_its_own_error_is_not_read_as_success():

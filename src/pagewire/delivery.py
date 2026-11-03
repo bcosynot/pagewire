@@ -51,6 +51,7 @@ from .hardcover import HardcoverClient
 from .hardcover_delivery import deliver_hardcover, pending_report
 from .readwise import (
     MAX_SESSIONS_PER_REQUEST,
+    SHELF_ON_DELIVERY,
     ReadwiseClient,
     ReadwiseError,
 )
@@ -175,16 +176,28 @@ def deliver_readwise(
         book_id = rows[0]["readwise_id"]
         path = rows[0]["book_path"] or document
         if not book_id:
-            # Identity's ruling is that a matched row carries an id. If one somehow does
-            # not, inventing an id would address the wrong book, so the row is reported
-            # and left alone.
-            for row in rows:
-                report.failed[(document, row["started_at"])] = (
-                    "the row is matched but carries no readwise id, so Readwise cannot be"
-                    " told about it"
-                )
-            say(f"{path}: matched but has no readwise id — nothing sent")
-            continue
+            # Matching no longer adds a book to the owner's library, so the first sitting
+            # does. The shelf claim comes with it, which is exactly the case Readwise's own
+            # recipe names: "send POST /books first with the ISBN and status
+            # currently_reading, then POST /sessions". A book with no sitting never gets
+            # added, so nothing arrives in the library to be read or shelved.
+            try:
+                book_id = client.add(
+                    isbn=rows[0]["isbn"],
+                    title=rows[0]["title"],
+                    author=rows[0]["author"],
+                    status=SHELF_ON_DELIVERY,
+                ).book_id
+            except ReadwiseError as exc:
+                for row in rows:
+                    report.failed[(document, row["started_at"])] = (
+                        f"the book could not be added to Readwise: {exc}"
+                    )
+                say(f"{path}: could not add the book to Readwise — {exc}")
+                continue
+            # Kept, so the next sitting needs no second add.
+            storage.set_book_identity(document, readwise_id=str(book_id))
+            say(f"{path}: added to Readwise as book {book_id}")
 
         entries = _entries(storage, rows, book_id=str(book_id), policy=policy, report=report, say=say)
         delivered_paths: list[_Entry] = []
