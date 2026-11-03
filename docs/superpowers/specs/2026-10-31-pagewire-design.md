@@ -1,7 +1,7 @@
 # Pagewire — design
 
 Date: 2026-10-31
-Status: approved 2026-10-31 — see **Corrections (2026-11-01)** below
+Status: approved 2026-10-31 — see the Corrections blocks below
 Author: Garu (with Vivek Ranjan)
 Owner: Vivek Ranjan
 
@@ -31,6 +31,25 @@ recorded on the Linear children rather than here: the metadata sweep reads 100 b
 the card and keys each on the device's own `document` (matching exactly), and its "already
 identified" check is keyed on the SD path, because the device's listing carries no hash to
 compare against.
+
+## Corrections (2026-11-02)
+
+1. **The forwarding script on the container *did* land, and it is running.** *The existing path
+   on the LXC* closes by saying "no separate forwarding script exists on the container — the
+   earlier attempt never landed as running code", and *Answered by Vivek (2026-10-31)* item 3
+   repeats that nothing else writes to Hardcover "except the sync button". **Both are wrong.**
+   `kosync-hardcover` is live on CT 100 on its own systemd timer, every 15 minutes, and is a
+   **second writer to the same Hardcover account**. Its `book_index` covers 375 Calibre books
+   and carries `hardcover-id` identifiers; its `push_cache` holds the last pushed percentage
+   and timestamp. That is the only **independent** reading history available, and it is what
+   identified two books damaged on 2026-11-02 and made the damage recoverable at all — so it is
+   deliberately kept for that reason, not merely tolerated.
+   - **Decided by Vivek, 2026-11-02: it stays, as a second writer.** The one interaction to
+     know: both writers put `progress_pages` on the same read, so last write wins. They read the
+     same device position, so they normally agree; and the relay writes no journal entries,
+     which was the failure this design originally feared ("they'll appear twice"). Whether the
+     Kobo path (`config_hardcover_sync`) and annotation sync (`config_hardcover_annosync`) stay
+     off is unchanged and still required.
 
 ## Intent
 

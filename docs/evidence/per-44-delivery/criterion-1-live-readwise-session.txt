@@ -1,0 +1,68 @@
+PER-44 criterion 1 (LIVE half) — a finalised sitting reaches a real Readwise account
+Captured 2026-11-02. This is the half the offline evidence in this directory could not
+cover: previously nothing had ever been sent to Readwise.
+
+Everything else in this directory is regenerated against the Readwise double with no
+account. This file is the same criterion read back from the live service.
+
+---------------------------------------------------------------------
+The account's own record of the book
+
+GET https://readwise.io/books/api/v1/books?ids=6057408
+
+{"results":[{"id":6057408,"title":"The Jinn-Bot of Shantiport","author":"Samit Basu",
+"status":"currently_reading","creation_origin":"api","progress":0.2415,
+"started_reading_at":null,"finished_reading_at":null,
+"status_changed_at":"2026-11-02T23:56:28Z","rating":null,"review":null,
+"manual_total_pages":null,"manual_total_seconds":null,
+"product":{"id":"577033483507672324","title":"The Jinn-Bot of Shantiport","author":"Samit Basu",
+"format":"ebook","isbn":"9781250827524","asin":"B0BQGGLR6V","language_code":"eng",
+"publishing_date":"2023-10-03","page_count":416,"word_count":129540,
+"cover_url":"https://bookwise.com/product/cover/577033483507672324/the-jinn-bot-of-shantiport-samit-basu",
+"store_url":"https://readwise.io/books/9781250827524/"},
+"created":"2026-11-02T22:19:28Z","updated":"2026-11-02T23:56:28Z"}],"next":null}
+
+`creation_origin: "api"` — the account records that this book was created through the API,
+not by hand. `store_url` is the account's own page for it.
+
+---------------------------------------------------------------------
+The session id and its fields
+
+GET https://readwise.io/books/api/v1/sessions?book_ids=6057408
+
+{"results":[{"id":311638,"book_id":6057408,"started_at":"2026-11-01T22:02:30Z",
+"ended_at":"2026-11-01T22:38:55Z","paused_seconds":887,"total_time_seconds":1298,
+"total_xp":2215,"total_highlights":null,"format":"ebook","percent_at_start":0.2244,
+"percent_at_end":0.2415,"page_at_start":null,"page_at_end":null,"seconds_at_start":null,
+"seconds_at_end":null,"timezone":"America/New_York","local_date":"2026-11-01","origin":"api",
+"device":{"model":"X4","type":"E-Reader","vendor":"Xteink"},"caption":null,
+"published_at":null,"created":"2026-11-02T22:19:48Z","updated":"2026-11-02T22:19:48Z",
+"deleted_at":null,"is_deleted":false}],"next":null}
+
+Readwise issued session id 311638 and echoes back the start, end, positions and pause the
+relay derived from the device's event (see docs/evidence/per-47/criterion-2-readwise-session.txt
+for the side-by-side against the relay's own row).
+
+The ledger row the relay wrote for it: send_log id 1, destination readwise,
+external_id 311638, sent_at 1793657988, error NULL.
+
+---------------------------------------------------------------------
+PER-44 criterion 2 (LIVE half) — a repeat creates no second session
+
+The sweep has re-run delivery every ~60 s since 2026-11-02T22:20Z. Every run logs
+
+  readwise: 0 sent, 0 already present, 0 failed, 0 finished
+
+and GET /sessions for this book still returns exactly one session (311638). The
+reconciliation path ("already present") is therefore exercised against a real account
+without producing a duplicate. This pins the repeat case; it is not the same as the
+simulated crash-between-send-and-log-write case, which the offline idempotence.txt covers.
+
+---------------------------------------------------------------------
+Still NOT covered live by this file
+
+* criterion 3 — `publish_to_feed: false`. The live session object does not expose the field
+  and the API has no readback for it, so this cannot be confirmed against a real account
+  from here.
+* criterion 5 — 100 % finishing a book. No book finished *through the relay* has occurred
+  yet: send_log has no book-level finish row for any book.

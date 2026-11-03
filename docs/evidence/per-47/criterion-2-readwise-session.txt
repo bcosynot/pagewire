@@ -1,0 +1,62 @@
+PER-47 criterion 2 — one sitting in Readwise, with the device's own positions and duration
+Captured 2026-11-02, read back from the live services. Not a simulation: the raw events
+below are the device's, drained over the relay's own listener.
+
+Book:      /Samit Basu - The Jinn-Bot of Shantiport.epub
+Document:  8f49706e45186c3185a9a7fcbcabe6f5
+
+---------------------------------------------------------------------
+The device's raw events, as stored by the relay (raw_events)
+
+id=fdfeeadb-1  event=reader.session  ts_raw=1793572735
+  book="/Samit Basu - The Jinn-Bot of Shantiport.epub"
+  start_time=1793570550  end_time=1793571848
+  duration_seconds=1298  start_progress_bp=2244  end_progress_bp=2415  progress_scale=10000
+id=fdfeeadb-2  event=sleep.enter     ts_raw=1793572735  percent=24
+id=fdfeeadb-3  event=reader.exit     ts_raw=1793572737  percent=24
+id=823b7018-1  event=sleep.enter     ts_raw=1793558098  (no document)
+
+The press on the device is fdfeeadb-2, a sleep.enter — the same event the runbook's step 2
+asks for. Nothing in the payload set was produced by a curl or by the relay.
+
+---------------------------------------------------------------------
+The relay's derived row for that sitting
+
+document          8f49706e45186c3185a9a7fcbcabe6f5
+started_at        1793570550   = 2026-11-01T22:02:30Z
+ended_at          1793572735   = 2026-11-01T22:38:55Z
+active_seconds    1298
+paused_seconds    887
+start_progress_bp 2244   -> 0.2244
+end_progress_bp   2415   -> 0.2415
+finalised         1
+event_ids         ["fdfeeadb-1"]
+
+NOTE ON CITING THIS ROW: `derived_sessions.id` is not stable — every sweep re-derives, and
+the same sitting has been observed as id 973 and, a minute later, id 976. Cite the document
+plus started_at, never the row id.
+
+The trailing-gap rule, from the same numbers:
+  ts - end_time = 1793572735 - 1793571848 = 887 s, which is under the 1800 s window,
+  so it is a PAUSE, not a boundary. Therefore ended_at = ts and paused_seconds = 887.
+  ended_at - started_at - paused_seconds = 2185 - 887 = 1298 = active_seconds. Self-consistent.
+
+---------------------------------------------------------------------
+GET https://readwise.io/books/api/v1/sessions?book_ids=6057408
+
+{"results":[{"id":311638,"book_id":6057408,"started_at":"2026-11-01T22:02:30Z","ended_at":"2026-11-01T22:38:55Z","paused_seconds":887,"total_time_seconds":1298,"total_xp":2215,"total_highlights":null,"format":"ebook","percent_at_start":0.2244,"percent_at_end":0.2415,"page_at_start":null,"page_at_end":null,"seconds_at_start":null,"seconds_at_end":null,"timezone":"America/New_York","local_date":"2026-11-01","origin":"api","device":{"model":"X4","type":"E-Reader","vendor":"Xteink"},"caption":null,"published_at":null,"created":"2026-11-02T22:19:48Z","updated":"2026-11-02T22:19:48Z","deleted_at":null,"is_deleted":false}],"next":null}
+
+---------------------------------------------------------------------
+Side by side — the criterion asks for exactly this comparison
+
+                       relay's derived row     Readwise session 311638
+started_at             1793570550              2026-11-01T22:02:30Z   (same instant)
+ended_at               1793572735              2026-11-01T22:38:55Z   (same instant)
+active / total time    1298                    1298                   (same)
+paused_seconds         887                     887                    (same)
+start position         2244 bp = 0.2244        0.2244                 (same)
+end position           2415 bp = 0.2415        0.2415                 (same)
+device                 —                       {Xteink X4, E-Reader}  (the reader)
+origin                 —                       "api"
+
+Every field the criterion names agrees: start, end, positions, duration and pause.
