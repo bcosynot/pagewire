@@ -62,7 +62,8 @@ origin                 —                       "api"
 Every field the criterion names agrees: start, end, positions, duration and pause.
 
 ---------------------------------------------------------------------
-A second sitting, read 2026-11-02 21:34-21:52Z, delivered 2026-11-03T02:53:33Z
+The second sitting, as the worked example of every later one (read 2026-11-02 21:34-21:52Z,
+delivered 2026-11-03T02:53:33Z)
 
 The device drained again on its own. It is the same book continued, and the new sitting's
 start position is the previous one's end position (2415 bp) - a useful check that the relay
@@ -86,16 +87,25 @@ GET https://readwise.io/books/api/v1/sessions?book_ids=6057408 now returns this 
 "local_date":"2026-11-02","origin":"api","device":{"model":"X4","type":"E-Reader","vendor":"Xteink"},
 "created":"2026-11-03T02:53:33Z", ...}
 
-Side by side, second sitting:
+Every sitting to date
 
-                       relay's derived row     Readwise session 313024
-started_at             1793655268              2026-11-02T21:34:28Z   (same instant)
-ended_at               1793656309              2026-11-02T21:51:49Z   (same instant)
-active / total time    991                     991                    (same)
-paused_seconds         50                      50                     (same)
-start position         2415 bp = 0.2415        0.2415                 (same)
-end position           2719 bp = 0.2719        0.2719                 (same)
-device                 -                       {Xteink X4, E-Reader}  (the reader)
+The list below is the evidence. **The number of rows is deliberately not restated in prose**
+anywhere in these files: it grows every time he reads, and a stale count reads as a fact. Add a
+row when a new sitting arrives.
 
-Two sittings, two sessions, each matching its own derived row. The criterion is met twice,
-independently.
+  derived started_at / ended_at   active  paused  bp start -> end   Readwise session
+  1793570550 / 1793572735          1298    887    2244 -> 2415       311638  2026-11-01T22:02:30Z - 22:38:55Z
+  1793655268 / 1793656309           991     50    2415 -> 2719       313024  2026-11-02T21:34:28Z - 21:51:49Z
+  1793672488 / 1793675985          2577    920    2719 -> 3371       314808  2026-11-03T02:21:28Z - 03:19:45Z
+
+Every column agrees with the service's own row, and every sitting's start position is the
+previous sitting's end position - the relay does not reset progress between sittings. The
+arithmetic holds on each row: ended_at - started_at - paused_seconds = active_seconds
+(2185-887=1298; 1041-50=991; 3497-920=2577).
+
+Raw events behind each row: fdfeeadb-1 (first); b0c55794-1 (second, with 175c931e-1 reader.exit
+and 3a77617a-1, 30957ecd-1 sleep.enter); 1b80b220-1 (third, with b0c55794-2, b0c55794-3 and
+1b80b220-2).
+
+No sitting has ever produced two sessions: every delivery sends one session per sitting, and the
+sweep's re-runs log `0 sent, 0 already present`.

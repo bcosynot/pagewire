@@ -86,9 +86,10 @@ real sitting was delivered to a real account, and the account's own readback is 
 - **Criterion 2, live half — partially covered.** The repeat case is exercised against a real
   account: delivery re-runs every ~60 s, logging `readwise: 0 sent, 0 already present,
   0 failed`, and each sitting produces exactly one session and never a duplicate. (Corrected
-  2026-11-03: this bullet said "still returns exactly one session for the book"; the book now
-  has **two** sessions because a **second sitting** was delivered — session `313024`, read
-  2026-11-02 21:34–21:52Z. Two sittings, two sessions; no duplicate.) The simulated
+  2026-11-03: this bullet said "still returns exactly one session for the book", which was true
+  then and is false now — the book has one session per sitting, however many there are. The
+  count is not restated here for that reason; the list is in
+  `docs/evidence/per-47/criterion-2-readwise-session.txt`.) The simulated
   crash-between-send-and-log-write case remains the offline `idempotence.txt`.
 - **Criterion 3 — still open.** The live session object does not expose `publish_to_feed`
   and the API has no readback for it.

@@ -37,7 +37,7 @@ The write landed at 2026-11-03T00:00:30Z (send_log row 2, external id 7498150 �
 own id), with send_log.error NULL.
 
 ---------------------------------------------------------------------
-A second sitting updated the SAME read — 2026-11-03T02:53:34Z
+Later sittings update the SAME read — the second, 2026-11-03T02:53:34Z
 
 The next sitting (device end position 2719 bp = 27.19 %) landed on read 7498150, the same
 in-progress read, as progress on a current read should:
@@ -52,5 +52,14 @@ device's fraction      0.2719 = 27.19 %
 difference             0.0003 of the book = 0.13 of a page  (within one page)
 
 No second read was created: the entry still holds exactly one in-progress read (7498150), so
-progress accumulates on one read rather than fanning out. send_log row 105 carries the same
-external id for this reason.
+progress accumulates on one read rather than fanning out. Every Hardcover delivery reuses this
+read, which is why **every** `hardcover` row in `send_log` carries the same external id.
+
+Every sitting to date, mapped:
+
+  device end bp   page written   edition pages   Hardcover %   device %
+  2415            100            416             24.04         24.15
+  2719            113            416             27.16         27.19
+  3371            140            416             33.65         33.71
+
+Rows are added as sittings arrive; the total is deliberately not restated in prose.

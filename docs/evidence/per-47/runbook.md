@@ -233,15 +233,21 @@ Hardcover stores **no percent** — the percentage is `progress_pages ÷ edition
 
 *Closes: nothing. It is what makes a new sitting identifiable.*
 
-There are already two sittings in the database, and they are **not readings**: they are
-the synthetic events PER-46's deploy check posted (`deploy-check-1`, `deploy-check-2`).
+The **two synthetic** sittings in the database are **not readings**: they are the events
+PER-46's deploy check posted (`deploy-check-1`, `deploy-check-2`). Every real sitting since
+has come from the device on its own.
 
 ```
-raw_events: 6   (deploy-check-1, deploy-check-2 — synthetic; 823b7018-1 and
-                 fdfeeadb-1..3 — the device's own Jinn-Bot drain on 2026-11-01)
-derived_sessions: 3   (the two synthetic ones, plus the Jinn-Bot sitting)
-books: 100   (the metadata sweep has run: 62 auto-matched, 38 held for confirmation)
+raw_events:       2 synthetic (deploy-check-1, deploy-check-2) + 4 per real sitting
+derived_sessions: 2 synthetic + 1 per real sitting
+books:            100 (62 auto-matched, 38 held for confirmation)
 ```
+
+**Do not hard-code a total here.** These grow every time he reads — a number written into this
+file is stale by the next drain, which is exactly how this step went wrong the first time.
+Record what you see and diff against it after your reading. The enumerable list of sittings,
+with each one's values, is kept in `criterion-2-readwise-session.txt` rather than duplicated
+here.
 
 **Updated 2026-11-02.** The baseline originally read `raw_events: 2`, `derived_sessions: 2`
 (ids 62, 63), `books: 0`. All three have moved: the device has since drained a real sitting and

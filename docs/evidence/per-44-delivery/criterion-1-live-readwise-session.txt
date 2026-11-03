@@ -59,11 +59,11 @@ reconciliation path ("already present") is therefore exercised against a real ac
 thousands of consecutive runs without producing an extra session.
 
 CORRECTED 2026-11-03: this section previously read "GET /sessions for this book still returns
-exactly one session (311638)", which was true when written and **is now false** — the book has
-**two** sessions, because a **second sitting** was read and delivered (session **313024**,
-read 2026-11-02 21:34-21:52Z, delivered 2026-11-03T02:53:33Z). Two sittings, two sessions: the
-per-sitting idempotence the criterion asks about still holds, and the higher count is the
-correct behaviour rather than a duplicate. Both sessions are in
+exactly one session (311638)", which was true when written and is false now — the book has
+**one session per sitting**, however many sittings there are. The per-sitting idempotence this
+criterion asks about still holds, and the higher count is correct behaviour rather than a
+duplicate. **The count is deliberately not restated anywhere in this file**, because it changes
+whenever he reads; the enumerable list is in
 `docs/evidence/per-47/criterion-2-readwise-session.txt`.
 
 This still is not the simulated crash-between-send-and-log-write case, which the offline
