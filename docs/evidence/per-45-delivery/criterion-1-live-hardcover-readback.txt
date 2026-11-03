@@ -1,0 +1,54 @@
+PER-45 criterion 1 (LIVE half) — a sitting's end percent lands as progress on a real read
+Captured 2026-11-02. This is the half the offline evidence in this directory could not
+cover: previously nothing had ever been sent to Hardcover.
+
+---------------------------------------------------------------------
+What the relay sent, and what the account holds
+
+POST https://api.hardcover.app/v1/graphql
+query { user_books(where: {book_id: {_eq: 770867}, edition_id: {_eq: 30772692}}, limit: 1) {
+          id status_id
+          user_book_reads(where: {finished_at: {_is_null: true}}, order_by: {id: desc}, limit: 1) {
+            id progress_pages edition { pages } } } }
+
+{"data":{"user_books":[{"id":20311675,"status_id":2,"user_book_reads":[{"id":7498150,
+"progress_pages":100,"edition":{"pages":416}}]}]}}
+
+The read the criterion names is id 7498150 — the entry's in-progress read, created on this
+delivery — and its edition reports 416 pages, so the mapped page and the edition's count are
+shown together as the criterion asks. See
+docs/evidence/per-47/criterion-3-hardcover-readback.txt for the arithmetic against the
+device's 24.15 % (24.04 % written; 0.46 of a page off).
+
+The ledger row: send_log id 2, destination hardcover, external_id 7498150 (the read's own
+id), sent_at 1793664030, error NULL.
+
+---------------------------------------------------------------------
+A live surprise that closes an open risk, and opens one
+
+The offline README worried that a real account might refuse the `update_user_book_read`
+document, "in particular that `action_at` takes a String variable holding an
+offset-bearing timestamp". It did not: the mutation was accepted and the page landed.
+
+But **`action_at` is not a readable field.** Introspecting the live schema:
+
+  query { __type(name: "user_book_reads") { fields { name } } }
+
+returns edition, edition_id, finished_at, finished_at_precision, id, paused_at, progress,
+progress_pages, progress_seconds, started_at, user_book, user_book_id. There is no
+`action_at`; the datetime fields the read exposes are `started_at`, `finished_at` and
+`paused_at`, all `date` scalars.
+
+So criterion 1's "with `action_at` set to when he actually stopped" cannot be verified by
+readback: the field is accepted on the mutation input but is not in the queryable schema.
+The page half of criterion 1 is proven; the `action_at` half is not readable and is left
+open deliberately rather than called met.
+
+---------------------------------------------------------------------
+Still NOT covered live by this file
+
+* criterion 2 — finishing a book. No book has been finished through the relay yet
+  (send_log has no status-change row).
+* criterion 3 — no `reading_journals` rows. The token carries no `read:journal` scope;
+  the query answers {"error":"insufficient_scope","error_description":"Missing scopes:
+  read:journal"}. Not verifiable with this token, so left open.

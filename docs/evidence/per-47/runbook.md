@@ -8,6 +8,14 @@ executed.** The four *readback* commands are tools rather than steps, and each o
 executed on 2026-11-02 while this file was written — they are marked as verified so that
 the steps that depend on them are not hypotheses.
 
+**Status update, later on 2026-11-02 — read this before running.** A1 and A2 have since been
+done: both tokens are installed and both destinations report `true`. And criteria **2 and 3
+are already met**, by a real sitting that drained from the device on its own — see
+`docs/evidence/per-47/README.md` and the `criterion-2`/`criterion-3` files beside it. That
+does **not** close the ticket: criteria **4, 5 and 6 are unrun** and still need the reader in
+hand, so steps 6, 7 and 8 remain the work. The original handover status above is kept as
+written.
+
 This is the only proof that matters for this project: a real sitting, read on the X4 with
 nothing pressed, landing in Readwise, and progress landing in Hardcover. It closes the
 epic's original complaint. It is written as a runbook for the owner to execute, not as
@@ -45,6 +53,22 @@ PAGEWIRE_HARDCOVER_ENABLED=false
 So a device run started today would prove criterion 4's queueing and criterion 5's
 stitching, and would fail criteria 2 and 3 for a reason that has nothing to do with the
 reader. Do A1 and A2 first.
+
+**Resolved later on 2026-11-02 — A1 and A2 are DONE; do not re-run them.** Both tokens were
+validated against their own service, written into `/var/app/data/pagewire/pagewire.env`
+(mode 600, `pagewire:pagewire`; the previous files are kept as
+`pagewire.env.pre-per47-readwise` and `pagewire.env.pre-per47-hardcover`), and both switches
+are `true`:
+
+```
+$ curl -s http://192.168.0.112:8799/healthz
+{"ok":true,"version":"0.0.1","events":6,"destinations":{"readwise":true,"hardcover":true}}
+```
+
+The measurement above is kept as what the box showed before them. Skip to Gate B and step 0.
+These two steps also closed more than they were written for: PER-44's criterion 1 and PER-45's
+criterion 1 have since been exercised for real — see `docs/evidence/per-44-delivery/` and
+`docs/evidence/per-45-delivery/`.
 
 ### A1. Obtain the two tokens — NOT YET RUN
 
@@ -213,10 +237,21 @@ There are already two sittings in the database, and they are **not readings**: t
 the synthetic events PER-46's deploy check posted (`deploy-check-1`, `deploy-check-2`).
 
 ```
-raw_events: 2   (deploy-check-1, deploy-check-2 — synthetic)
-derived_sessions: 2   (ids 62, 63 — derived from the above)
-books: 0
+raw_events: 6   (deploy-check-1, deploy-check-2 — synthetic; 823b7018-1 and
+                 fdfeeadb-1..3 — the device's own Jinn-Bot drain on 2026-11-01)
+derived_sessions: 3   (the two synthetic ones, plus the Jinn-Bot sitting)
+books: 100   (the metadata sweep has run; ~30 auto-matched, the rest held for confirmation)
 ```
+
+**Updated 2026-11-02.** The baseline originally read `raw_events: 2`, `derived_sessions: 2`
+(ids 62, 63), `books: 0`. All three have moved: the device has since drained a real sitting and
+the sweep has keyed 100 books, so **this is no longer a clean baseline** — do not mistake the
+Jinn-Bot rows for new evidence of your run. Record the counts you see and diff against them
+after your reading.
+
+Note also that `derived_sessions.id` is **not stable**: every sweep re-derives, and the same
+sitting has been observed as id 973 and, a minute later, id 976. Identify a sitting by its
+`document` and `started_at`, never by row id.
 
 Run R1 and R2 and write down the counts and the ids. After the run, the new
 `raw_events` row and the new `derived_sessions` row are the sitting. Do not treat the

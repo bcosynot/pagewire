@@ -90,3 +90,26 @@ criterion is pinned; Hardcover's acceptance of it is not. Specifically still unp
 
 Criterion 4's request log and criterion 6's zero-request count are genuinely offline, so both
 are closed by this directory. Criteria 1, 2, 3 and 5 are not.
+
+**Update 2026-11-02:** criterion 1 is **partly** covered live — see below. Criteria 2, 3 and 5
+are still not. The open risk named above about `action_at` is now answered, in both directions.
+
+## Live readback (2026-11-02)
+
+`criterion-1-live-hardcover-readback.txt` is the live half of criterion 1: a real sitting was
+delivered to a real Hardcover account, and the account's own readback is the evidence.
+
+- **Criterion 1 — page half closed, `action_at` half not readable.** Book 770867 / edition
+  30772692, entry 20311675, in-progress read **7498150** with `progress_pages: 100` on an
+  edition of **416** pages = 24.04 %, against the device's own 24.15 % (0.46 of a page off).
+  So the percent → page mapping through a real edition is confirmed.
+  - The `action_at` worry in the section above is **resolved: the mutation was accepted** and
+    the page landed. But `action_at` **cannot be read back** — introspecting the live schema,
+    `user_book_reads` exposes only `started_at`, `finished_at` and `paused_at` (all `date`);
+    there is no `action_at` field. The criterion's `action_at` half is therefore left open as
+    *unverifiable by readback* rather than called met.
+- **Criterion 2 — still open.** No book has been finished through the relay on a real account.
+- **Criterion 3 — still open, and not currently verifiable.** The token carries no
+  `read:journal` scope, so `reading_journals` answers
+  `{"error":"insufficient_scope","error_description":"Missing scopes: read:journal"}`.
+- **Criterion 5 — still open.** No 403 has been produced by a real token.
