@@ -35,3 +35,22 @@ Hardcover stores pages and never a percent, so 100 is the only thing it could ho
 
 The write landed at 2026-11-03T00:00:30Z (send_log row 2, external id 7498150 — the read's
 own id), with send_log.error NULL.
+
+---------------------------------------------------------------------
+A second sitting updated the SAME read — 2026-11-03T02:53:34Z
+
+The next sitting (device end position 2719 bp = 27.19 %) landed on read 7498150, the same
+in-progress read, as progress on a current read should:
+
+{"data":{"user_books":[{"id":20311675,"status_id":2,"user_book_reads":[{"id":7498150,
+"progress_pages":113,"edition":{"pages":416}}]}]}}
+
+edition pages          416
+progress_pages written 113
+Hardcover's fraction   113 / 416 = 0.27163... = 27.16 %
+device's fraction      0.2719 = 27.19 %
+difference             0.0003 of the book = 0.13 of a page  (within one page)
+
+No second read was created: the entry still holds exactly one in-progress read (7498150), so
+progress accumulates on one read rather than fanning out. send_log row 105 carries the same
+external id for this reason.

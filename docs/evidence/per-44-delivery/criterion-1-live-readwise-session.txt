@@ -49,14 +49,25 @@ external_id 311638, sent_at 1793657988, error NULL.
 ---------------------------------------------------------------------
 PER-44 criterion 2 (LIVE half) — a repeat creates no second session
 
-The sweep has re-run delivery every ~60 s since 2026-11-02T22:20Z. Every run logs
+The sweep re-runs delivery every ~60 s. Between the delivery of a sitting and the arrival of
+the next one, every run logs
 
   readwise: 0 sent, 0 already present, 0 failed, 0 finished
 
-and GET /sessions for this book still returns exactly one session (311638). The
-reconciliation path ("already present") is therefore exercised against a real account
-without producing a duplicate. This pins the repeat case; it is not the same as the
-simulated crash-between-send-and-log-write case, which the offline idempotence.txt covers.
+and `GET /sessions` returns exactly one session per sitting — never a duplicate. The
+reconciliation path ("already present") is therefore exercised against a real account over
+thousands of consecutive runs without producing an extra session.
+
+CORRECTED 2026-11-03: this section previously read "GET /sessions for this book still returns
+exactly one session (311638)", which was true when written and **is now false** — the book has
+**two** sessions, because a **second sitting** was read and delivered (session **313024**,
+read 2026-11-02 21:34-21:52Z, delivered 2026-11-03T02:53:33Z). Two sittings, two sessions: the
+per-sitting idempotence the criterion asks about still holds, and the higher count is the
+correct behaviour rather than a duplicate. Both sessions are in
+`docs/evidence/per-47/criterion-2-readwise-session.txt`.
+
+This still is not the simulated crash-between-send-and-log-write case, which the offline
+`idempotence.txt` covers.
 
 ---------------------------------------------------------------------
 Still NOT covered live by this file

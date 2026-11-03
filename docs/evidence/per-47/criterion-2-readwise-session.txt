@@ -60,3 +60,42 @@ device                 —                       {Xteink X4, E-Reader}  (the rea
 origin                 —                       "api"
 
 Every field the criterion names agrees: start, end, positions, duration and pause.
+
+---------------------------------------------------------------------
+A second sitting, read 2026-11-02 21:34-21:52Z, delivered 2026-11-03T02:53:33Z
+
+The device drained again on its own. It is the same book continued, and the new sitting's
+start position is the previous one's end position (2415 bp) - a useful check that the relay
+does not reset progress between sittings.
+
+raw event  b0c55794-1  event=reader.session  ts=1793656309
+  book="/Samit Basu - The Jinn-Bot of Shantiport.epub"   document=8f49706e45186c3185a9a7fcbcabe6f5
+  duration_seconds=991  start_progress_bp=2415  end_progress_bp=2719
+  (the same drain also carried 175c931e-1 reader.exit and 3a77617a-1, 30957ecd-1 sleep.enter)
+
+derived row: started_at 1793655268 = 2026-11-02T21:34:28Z, ended_at 1793656309 = 2026-11-02T21:51:49Z,
+  active_seconds 991, paused_seconds 50, 2415 -> 2719 bp
+
+The rule again on this row: ended_at - started_at - paused_seconds = 1041 - 50 = 991 = active_seconds.
+
+GET https://readwise.io/books/api/v1/sessions?book_ids=6057408 now returns this session as well:
+
+{"id":313024,"book_id":6057408,"started_at":"2026-11-02T21:34:28Z","ended_at":"2026-11-02T21:51:49Z",
+"paused_seconds":50,"total_time_seconds":991,"total_xp":3938,"format":"ebook",
+"percent_at_start":0.2415,"percent_at_end":0.2719,"timezone":"America/New_York",
+"local_date":"2026-11-02","origin":"api","device":{"model":"X4","type":"E-Reader","vendor":"Xteink"},
+"created":"2026-11-03T02:53:33Z", ...}
+
+Side by side, second sitting:
+
+                       relay's derived row     Readwise session 313024
+started_at             1793655268              2026-11-02T21:34:28Z   (same instant)
+ended_at               1793656309              2026-11-02T21:51:49Z   (same instant)
+active / total time    991                     991                    (same)
+paused_seconds         50                      50                     (same)
+start position         2415 bp = 0.2415        0.2415                 (same)
+end position           2719 bp = 0.2719        0.2719                 (same)
+device                 -                       {Xteink X4, E-Reader}  (the reader)
+
+Two sittings, two sessions, each matching its own derived row. The criterion is met twice,
+independently.

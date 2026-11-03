@@ -102,7 +102,9 @@ delivered to a real Hardcover account, and the account's own readback is the evi
 - **Criterion 1 — page half closed, `action_at` half not readable.** Book 770867 / edition
   30772692, entry 20311675, in-progress read **7498150** with `progress_pages: 100` on an
   edition of **416** pages = 24.04 %, against the device's own 24.15 % (0.46 of a page off).
-  So the percent → page mapping through a real edition is confirmed.
+  So the percent → page mapping through a real edition is confirmed. A **second sitting** then
+  updated the same read to `progress_pages: 113` = 27.16 % against the device's 27.19 %
+  (0.13 of a page), and **no second read was created** — progress accumulates on one read.
   - The `action_at` worry in the section above is **resolved: the mutation was accepted** and
     the page landed. But `action_at` **cannot be read back** — introspecting the live schema,
     `user_book_reads` exposes only `started_at`, `finished_at` and `paused_at` (all `date`);

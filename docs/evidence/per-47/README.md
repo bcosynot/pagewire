@@ -7,9 +7,10 @@ Two readings of the runbook's status exist, and they disagree; this file is the 
 
 ## State at 2026-11-02 (this file)
 
-**Criteria 2 and 3 are met, on a real sitting, from the real device.** The sitting is
-The Jinn-Bot of Shantiport, drained by the reader over the relay's listener on
-2026-11-01 22:02–22:39Z, and it is present in both destinations:
+**Criteria 2 and 3 are met, on real sittings, from the real device.** Two sittings of
+The Jinn-Bot of Shantiport have drained from the reader over the relay's listener — read
+2026-11-01 22:02–22:39Z (delivered 2026-11-02) and 2026-11-02 21:34–21:52Z (delivered
+2026-11-03) — and both are present in both destinations:
 
 | criterion | met? | file |
 |---|---|---|
